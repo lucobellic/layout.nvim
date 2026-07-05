@@ -1,0 +1,232 @@
+--- Panel orchestration — builds a Placement.Spec from the current tabpage
+--- and the registry, then applies the placement engine to reserve panels.
+---
+--- This is the bridge between user config and the placement engine.
+
+--- Raw window item collected during scanning, before key assignment.
+---@class Layout.Entity.Panel.RawSlot
+---@field winid integer
+---@field bufnr integer
+---@field vname string
+---@field gname string
+---@field key? string Per-occurrence key (e.g. "bottom:debug:2") or nil
+---@field ve Layout.View.Entry?
+
+--- Speculative classification for a window whose filter cannot match yet.
+--- Keyed by winid; produced by the toggle feature for windows spawned by
+--- a view's own `open` command.
+---@class Layout.Entity.Panel.PresumedEntry
+---@field side Layout.Side
+---@field group string
+---@field vname string
+---@field ve Layout.View.Entry
+
+---@alias Layout.Entity.Panel.Presumed table<integer, Layout.Entity.Panel.PresumedEntry>
+
+local placement = require('layout.shared.placement')
+local size_model = require('layout.entities.panel.model.size')
+local view_entity = require('layout.entities.view')
+
+---@class Layout.Entity.Panel
+---@field registry Layout.Registry? Registry reference for the current tabpage, set via `set_registry`.
+local Panel = {
+  registry = nil,
+}
+
+--- Assign per-occurrence keys to raw slots on a side and return the final
+--- sorted slot list with sizes resolved.  Slots are ordered first by the
+--- group declaration position and then by the view position within the group.
+---@private
+---@param side Layout.Side
+---@param raw Layout.Entity.Panel.RawSlot[]
+---@param order { group: table<string, integer>, view: table<string, integer> }
+---@return Placement.Slot[]
+local function finalize_side_slots(side, raw, order)
+  if #raw == 0 then return {} end
+
+  local with_key, without_key = {}, {}
+  for _, item in ipairs(raw) do
+    if item.key then
+      table.insert(with_key, item)
+    else
+      table.insert(without_key, item)
+    end
+  end
+
+  local total_counts = {}
+  for _, item in ipairs(raw) do
+    total_counts[item.vname] = (total_counts[item.vname] or 0) + 1
+  end
+
+  local max_idx = {}
+  for _, item in ipairs(with_key) do
+    local idx = item.key:match(':(%d+)$')
+    if idx then
+      local n = tonumber(idx)
+      max_idx[item.vname] = math.max(max_idx[item.vname] or 0, n)
+    end
+  end
+
+  for _, item in ipairs(without_key) do
+    if total_counts[item.vname] > 1 then
+      local n = (max_idx[item.vname] or 0) + 1
+      max_idx[item.vname] = n
+      item.key = side .. ':' .. item.vname .. ':' .. n
+    else
+      item.key = side .. ':' .. item.vname
+    end
+  end
+
+  local slots = {}
+  for _, item in ipairs(raw) do
+    slots[#slots + 1] = {
+      winid = item.winid,
+      bufnr = item.bufnr,
+      _key = item.key,
+      _vname = item.vname,
+      _gname = item.gname,
+      size = item.ve and item.ve.size,
+    }
+  end
+
+  table.sort(slots, function(a, b)
+    local ga = order.group[a._gname or ''] or 9999
+    local gb = order.group[b._gname or ''] or 9999
+    if ga ~= gb then return ga < gb end
+    local va = order.view[(a._gname or '') .. '\0' .. (a._vname or '')] or 9999
+    local vb = order.view[(b._gname or '') .. '\0' .. (b._vname or '')] or 9999
+    if va ~= vb then return va < vb end
+    local na = tonumber(((a._key or ''):match(':(%d+)$'))) or 0
+    local nb = tonumber(((b._key or ''):match(':(%d+)$'))) or 0
+    return na < nb
+  end)
+
+  return slots
+end
+
+--- Store the registry reference so features can drive arrangement without
+--- carrying their own copy.
+---@public
+---@param registry Layout.Registry
+function Panel:set_registry(registry)
+  self.registry = registry
+end
+
+--- Scan the current tabpage, classify tool windows, build a Placement.Spec,
+--- and apply the placement engine.
+---
+--- When called without an explicit registry the cached one (set via
+---`set_registry`) is used, allowing features to drive arrangement.
+---
+--- Windows the filters cannot classify fall back to the `presumed` map,
+--- letting a freshly opened view be placed before its buffer options
+---(e.g. deferred `filetype`) are available to the filter.
+---
+---@public
+---@param registry? Layout.Registry
+---@param presumed? Layout.Entity.Panel.Presumed
+function Panel:arrange(registry, presumed)
+  registry = registry or self.registry
+  if not registry then return end
+  local current_wins = vim.api.nvim_tabpage_list_wins(0)
+
+  -- Capture user-initiated panel resizes before placement so they persist.
+  size_model:update_live()
+
+  ---@type table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
+  local raw = { left = {}, right = {}, bottom = {} }
+  vim.iter(current_wins):each(function(winid)
+    if vim.api.nvim_win_is_valid(winid) then
+      local bufnr = vim.api.nvim_win_get_buf(winid)
+      local side, gname, vname, ve = view_entity:match_by_buf(bufnr, winid)
+      if not side and presumed and presumed[winid] then
+        local p = presumed[winid]
+        side, gname, vname, ve = p.side, p.group, p.vname, p.ve
+      end
+      if side then
+        local ok, existing_key = pcall(vim.api.nvim_win_get_var, winid, 'layout_view_key')
+        local key = (ok and type(existing_key) == 'string' and existing_key) or nil
+        table.insert(raw[side], {
+          winid = winid,
+          bufnr = bufnr,
+          vname = vname,
+          gname = gname,
+          key = key,
+          ve = ve,
+        })
+      end
+    end
+  end)
+
+  local has_slots = vim.iter({ 'left', 'right', 'bottom' }):any(function(side)
+    return #raw[side] > 0
+  end)
+  if not has_slots then
+    size_model:settle_topology()
+    return
+  end
+
+  ---@type table<Layout.Side, { group: table<string, integer>, view: table<string, integer> }>
+  local order_maps = {}
+  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+    local se = registry[side]
+    if se and se._order then
+      local group_map = {}
+      local view_map = {}
+      local gpos = 0
+      vim.iter(se._order):each(function(gname)
+        gpos = gpos + 1
+        group_map[gname] = gpos
+        local ge = se.groups[gname]
+        if ge and ge._order then
+          vim.iter(ge._order):enumerate():each(function(vpos, vname)
+            view_map[gname .. '\0' .. vname] = vpos
+          end)
+        end
+      end)
+      order_maps[side] = { group = group_map, view = view_map }
+    end
+  end)
+
+  ---@type table<Layout.Side, Placement.Slot[]>
+  local side_slots = {}
+  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+    side_slots[side] = finalize_side_slots(side, raw[side], order_maps[side] or { group = {}, view = {} })
+  end)
+
+  ---@type Placement.Spec
+  local spec = { center = true }
+  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+    local se = registry[side]
+    if se and #side_slots[side] > 0 then
+      spec[side] = {
+        size = size_model:get(side, se.size),
+        slots = side_slots[side],
+      }
+      if side == 'bottom' and se.align then spec[side].align = se.align end
+    end
+  end)
+
+  placement.place(spec)
+
+  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+    for _, slot in ipairs(side_slots[side]) do
+      if slot._key and vim.api.nvim_win_is_valid(slot.winid) then
+        pcall(vim.api.nvim_win_set_var, slot.winid, 'layout_view_key', slot._key)
+      end
+      vim.b[slot.bufnr].layout = {
+        side = side,
+        group = slot._gname,
+        view = slot._vname,
+        enabled = true,
+      }
+    end
+  end)
+
+  -- Commit corrected sizes and the new stable window topology.  A later
+  -- split/close must not turn Neovim's collateral panel resize into the
+  -- user's preferred size before another placement cycle corrects it.
+  size_model:commit_live()
+end
+
+return Panel

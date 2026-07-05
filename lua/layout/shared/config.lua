@@ -1,0 +1,213 @@
+--- Default configuration and schema for layout.nvim.
+---
+--- Defines the LuaLS types for the user-facing config and the default
+--- values merged into user opts at setup time.
+
+---@alias Layout.Side
+---| '"left"'   # Left panel column
+---| '"right"'  # Right panel column
+---| '"bottom"' # Bottom panel row
+
+--- Buffer-local metadata exposed as `vim.b[bufnr].layout` for buffers managed
+--- by layout.nvim. Set `enabled` to `false` to exclude a buffer from future
+--- layout evaluation.
+---@class Layout.Buffer.Info
+---@field side Layout.Side Panel containing the buffer.
+---@field group string Configured group containing the view.
+---@field view string Configured view that matched the buffer.
+---@field enabled boolean Whether layout.nvim manages this buffer.
+
+--- Picker configuration for a group — controls how the group appears in the
+--- statusline and how it is selected via the picker.
+---@class Layout.Picker
+---@field icon? string Nerdfont glyph for the group.
+---@field key? string Single char; pressing this key after calling pick() toggles the group.
+
+--- Group config — position in the groups array is declaration order.
+---
+--- During normalization, the `picker` sub-table is flattened into direct
+---`icon` and `key` fields for efficient consumer access.
+---@class Layout.Group.Entry
+---@field name string Group identifier (used in Layout toggle, restore, picker).
+---@field picker? Layout.Picker Picker display and selection configuration.
+---@field icon? string Nerdfont glyph for the group (extracted from picker during normalization).
+---@field key? string Single-char toggle key (extracted from picker during normalization).
+---@field views table<string, Layout.View.Entry> View entries keyed by name.
+---@field _order? string[] View names in declaration order.
+
+--- Statusline pick-key placement position.
+---@alias Layout.Statusline.PickKeyPose
+---| '"left"' # Pick key at the left of the icon, before the left separator
+---| '"right"' # Pick key at the right of the icon, after the right separator
+---| '"left_separator"' # Replace the left separator with the pick key
+---| '"right_separator"' # Replace the right separator with the pick key
+---| '"icon"' # Replace the group icon with the pick key
+
+--- Highlight color configuration for statusline icons.
+---@class Layout.Statusline.Colors
+---@field active string Link target for LayoutActive highlight group
+---@field inactive string Link target for LayoutInactive highlight group
+---@field pick_active string Link target for LayoutPickActive highlight group
+---@field pick_inactive string Link target for LayoutPickInactive highlight group
+---@field separator_active string Link target for LayoutSeparatorActive highlight group
+---@field separator_inactive string Link target for LayoutSeparatorInactive highlight group
+
+--- Statusline rendering options for group icons.
+---@class Layout.Statusline.Opts
+---@field separators { [1]: string, [2]: string } Left and right separators around each icon
+---@field clickable boolean Enable toggle on click via v:lua callback regions
+---@field colored boolean Enable highlight support (%#LayoutActive...#)
+---@field pick_key_pose Layout.Statusline.PickKeyPose Position of the pick key relative to the icon
+---@field colors Layout.Statusline.Colors Highlight color mappings
+
+---@class Layout.Workspaces
+---@field auto_save boolean Write layout on view changes.
+---@field auto_restore boolean Replay layout when entering a cwd.
+---@field dir string Directory for persisted layout files.
+
+--- Top-level user configuration passed to `require("layout").setup(opts)`.
+---@class Layout.Config
+---@field left? Layout.Side.Entry Left panel configuration.
+---@field right? Layout.Side.Entry Right panel configuration.
+---@field bottom? Layout.Side.Entry Bottom panel configuration.
+---@field live_resize_debounce? integer Debounce ms for live panel size capture during VimResized/WinResized events.
+---@field workspaces Layout.Workspaces
+---@field statusline? Layout.Statusline.Opts Statusline rendering options for group icons.
+---@field events? string[] Autocommand events that trigger re-evaluation of all views.  See `:help autocmd-events`.
+
+--- Normalized view entry built from user config.
+---@class Layout.View.Entry
+---@field name string View identifier used in commands, restoration, and display title.
+---@field filter string|fun(buf: integer, win: integer): boolean
+---@field open string|fun()
+---@field size? integer
+---@field bo? table<string, any>
+---@field wo? table<string, any>
+
+--- Normalized side entry built from user config.
+--- Bottom panel alignment mode.
+---@alias Layout.Align
+---| '"contained"'     # bottom under center only; L/R keep full height
+---| '"left_aligned"'  # bottom spans L+C; R keeps full height
+---| '"right_aligned"' # bottom spans C+R; L keeps full height
+---| '"full"'          # bottom spans L+C+R full width
+
+---@class Layout.Side.Entry
+---@field size integer
+---@field align? Layout.Align Bottom-only alignment (defaults to "full")
+---@field groups? table<string, Layout.Group.Entry>
+---@field _order? string[] Group names in declaration order
+
+--- Normalized layout registry produced by `normalize()`.
+--- The registry is a programmatic representation of the user config,
+--- with groups and views keyed by name instead of nested inline.
+---@class Layout.Registry
+---@field left? Layout.Side.Entry
+---@field right? Layout.Side.Entry
+---@field bottom? Layout.Side.Entry
+
+---@type Layout.Config
+local defaults = {
+  left = { size = 30 },
+  right = { size = 40 },
+  bottom = { size = 15, align = 'full' },
+  events = { 'FileType', 'WinEnter', 'BufWinEnter' },
+  live_resize_debounce = 150,
+  workspaces = {
+    auto_save = true,
+    auto_restore = true,
+    dir = vim.fn.stdpath('data') .. '/layout',
+  },
+  statusline = {
+    separators = { ' ', ' ' },
+    clickable = true,
+    colored = true,
+    pick_key_pose = 'right_separator',
+    colors = {
+      active = 'Normal',
+      inactive = 'Comment',
+      pick_active = 'PmenuSel',
+      pick_inactive = 'PmenuSel',
+      separator_active = 'Normal',
+      separator_inactive = 'Comment',
+    },
+  },
+}
+
+---@class Layout.Config.Module
+local Config = {
+  defaults = defaults,
+}
+
+--- Merge user opts with defaults and return a resolved `Layout.Config`.
+---@public
+---@param opts? table
+---@return Layout.Config
+function Config.merge(opts)
+  return vim.tbl_deep_extend('force', defaults, opts or {})
+end
+
+--- Normalize a merged config into a structured registry.
+---
+--- Groups are declared in the `groups` array and views in each group's
+---`views` array.  Array position determines declaration order.
+---
+--- Groups may also be placed directly on the side table as indexed entries
+--- alongside `size` (e.g. `left = { size = 40, { name = 'explorer', ... } }`).
+---
+---@public
+---@param config Layout.Config The merged config (values + defaults)
+---@return Layout.Registry
+function Config.normalize(config)
+  local function groups_from(sc)
+    if sc.groups and type(sc.groups) == 'table' and sc.groups[1] ~= nil then return sc.groups end
+    if sc[1] ~= nil then
+      local arr = {}
+      for _, v in ipairs(sc) do
+        arr[#arr + 1] = v
+      end
+      return arr
+    end
+    return {}
+  end
+
+  return vim.iter({ 'left', 'right', 'bottom' }):fold({}, function(reg, side)
+    local sc = config[side]
+    if not sc then return reg end
+
+    ---@type Layout.Side.Entry
+    local side_entry = { size = sc.size or defaults[side].size, groups = {}, _order = {}, align = sc.align }
+
+    for _, g in ipairs(groups_from(sc)) do
+      if g.name then
+        local pk = g.picker or {}
+        ---@type Layout.Group.Entry
+        local group_entry = {
+          name = g.name,
+          icon = pk.icon,
+          key = pk.key,
+          picker = g.picker,
+          views = {},
+          _order = {},
+        }
+
+        if g.views and type(g.views) == 'table' and g.views[1] ~= nil then
+          for _, vw in ipairs(g.views) do
+            if vw.name and vw.filter ~= nil then
+              group_entry.views[vw.name] = vw
+              group_entry._order[#group_entry._order + 1] = vw.name
+            end
+          end
+        end
+
+        side_entry.groups[g.name] = group_entry
+        side_entry._order[#side_entry._order + 1] = g.name
+      end
+    end
+
+    reg[side] = side_entry
+    return reg
+  end)
+end
+
+return Config

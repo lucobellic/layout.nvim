@@ -1,0 +1,62 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Tests",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/run_tests.sh",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [],
+      "options": {
+        "env": {
+          "MINI_NVIM_PATH": "${userHome}/.local/share/kickstart/lazy/mini.nvim"
+        }
+      }
+    },
+    {
+      "label": "Run Test: Panel Alignment",
+      "type": "shell",
+      "command": "nvim",
+      "args": [
+        "--headless",
+        "-u", "NONE",
+        "-c", "set rtp+=${userHome}/.local/share/kickstart/lazy/mini.nvim,${workspaceFolder}",
+        "-c", "luafile ${workspaceFolder}/scripts/minitest.lua",
+        "-c", "lua MiniTest.run_file('tests/test_panel_alignment.lua')",
+        "-c", "qa!"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Test: Placement",
+      "type": "shell",
+      "command": "nvim",
+      "args": [
+        "--headless",
+        "-u", "NONE",
+        "-c", "set rtp+=${userHome}/.local/share/kickstart/lazy/mini.nvim,${workspaceFolder}",
+        "-c", "luafile ${workspaceFolder}/scripts/minitest.lua",
+        "-c", "lua MiniTest.run_file('tests/test_placement.lua')",
+        "-c", "qa!"
+      ],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
