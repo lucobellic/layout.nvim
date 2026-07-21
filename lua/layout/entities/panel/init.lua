@@ -26,6 +26,7 @@
 local placement = require('layout.shared.placement')
 local size_model = require('layout.entities.panel.model.size')
 local view_entity = require('layout.entities.view')
+local view_state = require('layout.shared.view_state')
 
 ---@class Layout.Entity.Panel
 ---@field registry Layout.Registry? Registry reference for the current tabpage, set via `set_registry`.
@@ -124,7 +125,7 @@ local function arrange(registry, presumed)
   ---@type table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
   local raw = { left = {}, right = {}, bottom = {} }
   vim.iter(current_wins):each(function(winid)
-    if vim.api.nvim_win_is_valid(winid) then
+    if vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_config(winid).relative == '' then
       local bufnr = vim.api.nvim_win_get_buf(winid)
       local side, gname, vname, ve = view_entity:match_by_buf(bufnr, winid)
       if not side and presumed and presumed[winid] then
@@ -223,13 +224,19 @@ end
 ---@return nil
 function Panel:arrange(registry, presumed)
   registry = registry or self.registry
+  if vim.fn.getcmdwintype() ~= '' or vim.v.exiting ~= vim.NIL then
+    size_model:mark_topology_changed()
+    return
+  end
   if not registry or not size_model:begin_placement() then return end
+  local saved_views = view_state:save()
 
   local ok, placed = xpcall(function()
     return arrange(registry, presumed)
   end, debug.traceback)
   if not ok then
     size_model:abort_placement()
+    view_state:restore(saved_views)
     error(placed)
   end
 
@@ -238,6 +245,7 @@ function Panel:arrange(registry, presumed)
   else
     size_model:settle_topology()
   end
+  view_state:restore(saved_views)
 end
 
 return Panel

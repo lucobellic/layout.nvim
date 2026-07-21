@@ -7,44 +7,11 @@
 local Group = require('layout.entities.group')
 local Panel = require('layout.entities.panel')
 local View = require('layout.entities.view')
+local ViewState = require('layout.shared.view_state')
 local Workspace = require('layout.entities.workspace')
 
 ---@class Layout.Feature.Toggle
 local Toggle = {}
-
----@class Layout.Feature.Toggle.SavedView
----@field bufnr integer
----@field view table
-
----@alias Layout.Feature.Toggle.SavedViews table<integer, Layout.Feature.Toggle.SavedView>
-
---- Save views for pre-existing editor windows before tool splits disturb them.
----@private
----@return Layout.Feature.Toggle.SavedViews
-local function save_editor_views()
-  local saved = {}
-  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    local has_managed, managed = pcall(vim.api.nvim_win_get_var, winid, 'layout_managed')
-    local bufnr = vim.api.nvim_win_get_buf(winid)
-    if not (has_managed and managed) and vim.bo[bufnr].buftype ~= 'terminal' then
-      local ok, view = pcall(vim.api.nvim_win_call, winid, vim.fn.winsaveview)
-      if ok then saved[winid] = { bufnr = bufnr, view = view } end
-    end
-  end
-  return saved
-end
-
---- Restore editor views that still display the buffers captured before opening.
----@private
----@param saved Layout.Feature.Toggle.SavedViews
----@return nil
-local function restore_editor_views(saved)
-  for winid, state in pairs(saved) do
-    if vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_buf(winid) == state.bufnr then
-      pcall(vim.api.nvim_win_call, winid, function() vim.fn.winrestview(state.view) end)
-    end
-  end
-end
 
 --- Run the open command/function for a view.
 ---@private
@@ -106,8 +73,7 @@ local ARRANGE_MAX_ATTEMPTS = 6
 ---@private
 ---@param expected? table<string, boolean>  view names to wait for
 ---@param presumed? Layout.Entity.Panel.Presumed
----@param saved_views? Layout.Feature.Toggle.SavedViews
-local function arrange_now(expected, presumed, saved_views)
+local function arrange_now(expected, presumed)
   local attempts = 0
   local function converged()
     if not expected then return true end
@@ -125,7 +91,6 @@ local function arrange_now(expected, presumed, saved_views)
   end
   local function step()
     Panel:arrange(nil, presumed)
-    if saved_views then restore_editor_views(saved_views) end
     presumed = nil
     attempts = attempts + 1
     if attempts < ARRANGE_MAX_ATTEMPTS and not converged() then
@@ -162,7 +127,7 @@ end
 function Toggle.open_group(side, group_name)
   local gdesc = Group:get(side, group_name)
   if not gdesc then return end
-  local saved_views = save_editor_views()
+  ViewState:save()
   local views = Group:views_ordered(side, group_name)
   ---@type Layout.Entity.Panel.Presumed
   local presumed = {}
@@ -179,7 +144,7 @@ function Toggle.open_group(side, group_name)
   vim.iter(views):each(function(v)
     expected[v.name] = true
   end)
-  arrange_now(expected, presumed, saved_views)
+  arrange_now(expected, presumed)
 end
 
 --- Close a group: close all tool windows belonging to it.

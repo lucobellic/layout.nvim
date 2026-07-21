@@ -15,6 +15,7 @@ local Restore = require('layout.features.restore')
 local Statusline = require('layout.features.statusline')
 local Ui = require('layout.shared.ui')
 local View = require('layout.entities.view')
+local ViewState = require('layout.shared.view_state')
 
 ---@public
 ---@param opts? table
@@ -35,6 +36,7 @@ function M.setup(opts)
   View:register(registry)
   Group:register(registry)
   Panel:set_registry(registry)
+  ViewState:setup()
 
   if resolved.statusline then
     Statusline:setup(registry, resolved.statusline)

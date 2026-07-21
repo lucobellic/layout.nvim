@@ -489,12 +489,12 @@ describe('features.toggle', function()
     expect.equality(probe.slot ~= nil, true)
   end)
 
-  it('presumes only normal windows, not floats, created by open', function()
+  it('manages only normal windows when a matching float is also present', function()
     -- Given: a view whose open command creates a floating window plus a
     --        normal window, neither classifiable by the filter yet
     -- When: the group is opened
     -- Then: only the normal window is presumed and placed in the panel;
-    --       the float is left untouched and unmanaged
+    --       the float remains untouched even after it authoritatively matches
     local cfg = U.test_config({
       left = {
         size = 25,
@@ -505,6 +505,7 @@ describe('features.toggle', function()
                 filter = 'toolT',
                 open = function()
                   local fbuf = vim.api.nvim_create_buf(false, true)
+                  _G._float_buf = fbuf
                   _G._float_win = vim.api.nvim_open_win(fbuf, false, {
                     relative = 'editor',
                     row = 1,
@@ -546,6 +547,56 @@ describe('features.toggle', function()
     expect.equality(probe.normal_slotted, true)
     expect.equality(probe.float_slotted, false)
     expect.equality(probe.float_relative, 'editor')
+
+    child.lua([[
+      vim.wait(50, function() return false end)
+      vim.bo[_G._float_buf].filetype = 'toolT'
+      vim.api.nvim_set_current_win(_G._float_win)
+      _G._float_arrange_ok = pcall(require('layout.entities.panel').arrange, require('layout.entities.panel'))
+      local ok, managed = pcall(vim.api.nvim_win_get_var, _G._float_win, 'layout_managed')
+      _G._float_after_authoritative_match = {
+        managed = ok and managed == true or false,
+        relative = vim.api.nvim_win_get_config(_G._float_win).relative,
+      }
+    ]])
+    expect.equality(child.lua_get('_G._float_arrange_ok'), true)
+    expect.equality(child.lua_get('_G._float_after_authoritative_match.managed'), false)
+    expect.equality(child.lua_get('_G._float_after_authoritative_match.relative'), 'editor')
+  end)
+
+  it('defers placement while the command-line window is active', function()
+    -- Given: a matching tool window is in the wrong position
+    local cfg = U.test_config({
+      left = {
+        size = 25,
+        groups = {
+          explorer = {
+            views = { filesystem = { filter = 'toolL', open = 'echo' } },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.cmd('botright vsplit')
+    local tool = U.make_tool_win(child, 'toolL')
+    local col_before = child.api.nvim_win_get_position(tool)[2]
+
+    -- When: placement is requested from the command-line window
+    child.lua([[
+      local getcmdwintype = vim.fn.getcmdwintype
+      vim.fn.getcmdwintype = function() return ':' end
+      require('layout.entities.panel'):arrange()
+      vim.fn.getcmdwintype = getcmdwintype
+    ]])
+
+    -- Then: placement is deferred until normal editing resumes.
+    expect.equality(child.api.nvim_win_get_position(tool)[2], col_before)
+    local ok = pcall(child.api.nvim_win_get_var, tool, 'layout_managed')
+    expect.equality(ok, false)
+
+    child.lua([[require('layout.entities.panel'):arrange()]])
+    expect.equality(child.api.nvim_win_get_position(tool)[2], 0)
+    expect.equality(child.api.nvim_win_get_width(tool), 25)
   end)
 
   it('leaves a mispredicted window unmanaged after a later filter-based arrange', function()
@@ -679,6 +730,52 @@ describe('features.toggle', function()
     local probe = child.lua_get('_G._probe')
     expect.equality(probe.col, 0)
     expect.equality(probe.width, 25)
+  end)
+
+  it('preserves the editor view when an external bottom window is automatically placed', function()
+    -- Given: a tracked editor view and a full-width bottom panel declaration.
+    U.prepare(child)
+    child.o.splitkeep = 'screen'
+    local editor = child.api.nvim_get_current_win()
+    child.lua([[
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.tbl_map(tostring, vim.fn.range(1, 200)))
+      vim.api.nvim_win_set_cursor(0, { 93, 0 })
+      vim.cmd('normal! zt')
+      vim.api.nvim_win_set_cursor(0, { 100, 0 })
+      vim.cmd('redraw')
+      require('layout').setup({
+        bottom = {
+          size = 8,
+          align = 'full',
+          groups = {
+            {
+              name = 'external',
+              views = { { name = 'tool', filter = 'toolB', open = 'echo' } },
+            },
+          },
+        },
+        workspaces = { auto_save = false, auto_restore = false },
+      })
+      _G._external_screen_row = vim.fn.winline()
+    ]])
+
+    -- When: a plugin creates the matching split outside Toggle.open_group and
+    -- suppresses lifecycle events until WinResized requests placement.
+    child.lua([[
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.bo[buf].filetype = 'toolB'
+      local eventignore = vim.o.eventignore
+      vim.o.eventignore = 'all'
+      vim.cmd('belowright split')
+      vim.api.nvim_win_set_buf(0, buf)
+      vim.o.eventignore = eventignore
+      vim.api.nvim_exec_autocmds('WinResized', {})
+      vim.api.nvim_set_current_win(]] .. editor .. [[)
+    ]])
+
+    -- Then: automatic placement preserves both the buffer line and screen row.
+    expect.equality(child.api.nvim_win_get_cursor(editor)[1], 100)
+    expect.equality(child.lua_get('vim.fn.winline()'), child.lua_get('_G._external_screen_row'))
   end)
 
   it('does not error when open creates no windows', function()

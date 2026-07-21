@@ -20,19 +20,26 @@ local function valid(win)
 end
 
 ---@private
+---@param win integer?
+---@return boolean
+local function normal(win)
+  return valid(win) and vim.api.nvim_win_get_config(win).relative == ''
+end
+
+---@private
 ---@param spec Placement.Spec
 ---@return table<integer, boolean>
 local function source_windows(spec)
   local sources = {}
   vim.iter({ 'left', 'right', 'bottom' }):each(function(key)
     vim.iter(Spec.region_slots(spec[key])):each(function(slot)
-      if valid(slot.winid) then
+      if normal(slot.winid) then
         if sources[slot.winid] then
           error(('placement: window %d is assigned to more than one slot'):format(slot.winid))
         end
         sources[slot.winid] = true
       else
-        error(('placement: slot %s requires a valid winid'):format(slot.label or '?'))
+        error(('placement: slot %s requires a valid non-floating winid'):format(slot.label or '?'))
       end
     end)
   end)
@@ -44,10 +51,10 @@ end
 ---@return integer
 local function find_center(sources)
   local current = vim.api.nvim_get_current_win()
-  if valid(current) and not sources[current] then return current end
+  if normal(current) and not sources[current] then return current end
 
   local available = vim.iter(vim.api.nvim_tabpage_list_wins(0)):find(function(win)
-    return not sources[win]
+    return normal(win) and not sources[win]
   end)
   if available then return available end
 
