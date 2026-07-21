@@ -71,6 +71,22 @@ describe('placement.place', function()
       expect.equality(U.slot_buf(child, 'L1'), bufs.toolL)
     end)
 
+    it('sizes panels as fractions of the current editor dimensions', function()
+      -- Given: editor and tool windows in a 122-column by 41-row grid
+      local wins = U.make_scattered(child, { 'editor', 'toolL', 'toolB' })
+
+      -- When: both panels request one quarter of their editor axis
+      place({
+        left = { size = 0.25, slots = { { winid = wins.toolL } } },
+        bottom = { size = 0.25, align = 'full', slots = { { winid = wins.toolB } } },
+      })
+
+      -- Then: width and height are resolved independently from the editor grid
+      local geo = geo_by_slot()
+      expect.equality(geo.L1.width, 30)
+      expect.equality(geo.B1.height, 10)
+    end)
+
     it('places left+right+bottom (contained) reproducing the canonical tree', function()
       -- Given: editor + three tools, flat row
       local wins, bufs = U.make_scattered(child, { 'editor', 'toolL', 'toolR', 'toolB' })
@@ -227,6 +243,77 @@ describe('placement.place', function()
       local geo = geo_by_slot()
       expect.equality(geo.B1.width + geo.B2.width, 121)
       expect.equality(math.abs(geo.B1.width - geo.B2.width) <= 1, true)
+    end)
+
+    it('mixes fractional, absolute, and flex view sizes within a panel', function()
+      -- Given: three views sharing a 41-row panel with two separators
+      local wins = U.make_scattered(child, { 'editor', 'fraction', 'absolute', 'flex' })
+
+      -- When: one view requests 25% of the 39 usable rows, one requests 10 rows,
+      -- and the final view has no explicit size
+      place({
+        left = {
+          size = 30,
+          slots = {
+            { winid = wins.fraction, size = 0.25 },
+            { winid = wins.absolute, size = 10 },
+            { winid = wins.flex },
+          },
+        },
+      })
+
+      -- Then: explicit sizes are allocated first and flex receives the remainder
+      local geo = geo_by_slot()
+      expect.equality(geo.L1.height, 9)
+      expect.equality(geo.L2.height, 10)
+      expect.equality(geo.L3.height, 20)
+    end)
+
+    it('resolves fractional view widths from the bottom panel content area', function()
+      -- Given: three views sharing a 122-column bottom panel with two separators
+      local wins = U.make_scattered(child, { 'editor', 'fraction', 'absolute', 'flex' })
+
+      -- When: the first view requests 25% of the 120 usable columns
+      place({
+        bottom = {
+          size = 15,
+          align = 'full',
+          slots = {
+            { winid = wins.fraction, size = 0.25 },
+            { winid = wins.absolute, size = 20 },
+            { winid = wins.flex },
+          },
+        },
+      })
+
+      -- Then: the fraction and absolute size are applied and flex gets the rest
+      local geo = geo_by_slot()
+      expect.equality(geo.B1.width, 30)
+      expect.equality(geo.B2.width, 20)
+      expect.equality(geo.B3.width, 70)
+    end)
+
+    it('clamps over-allocated view sizes while keeping every view visible', function()
+      -- Given: three views with only 39 usable rows
+      local wins = U.make_scattered(child, { 'editor', 'first', 'second', 'flex' })
+
+      -- When: the two explicit views each request 30 rows
+      place({
+        left = {
+          size = 30,
+          slots = {
+            { winid = wins.first, size = 30 },
+            { winid = wins.second, size = 30 },
+            { winid = wins.flex },
+          },
+        },
+      })
+
+      -- Then: later allocations are clamped and all views retain at least one row
+      local geo = geo_by_slot()
+      expect.equality(geo.L1.height, 30)
+      expect.equality(geo.L2.height, 8)
+      expect.equality(geo.L3.height, 1)
     end)
 
     it('stacks two views horizontally in the bottom panel', function()

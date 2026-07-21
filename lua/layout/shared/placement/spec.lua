@@ -16,14 +16,14 @@
 ---@class Placement.Slot
 ---@field winid? integer Source window id (bufnr resolved from it if omitted)
 ---@field bufnr? integer Buffer to display in this slot
----@field size? integer Stacking size (height for L/R, width for B)
+---@field size? Layout.Size Stacking size (height for L/R, width for B)
 ---@field wo? table<string, any> Window-local options to apply
 ---@field bo? table<string, any> Buffer-local options to apply
 ---@field label? string Assigned by `normalize_spec` (e.g. "L1", "B2")
 
 --- A panel region (left, right, or bottom).
 ---@class Placement.Region
----@field size integer Region width (L/R) or height (B), excluding separators
+---@field size Layout.Size Region width (L/R) or height (B), excluding separators
 ---@field align? Placement.Align Bottom-only alignment (defaults to "contained")
 ---@field slots Placement.Slot[] Ordered slots (top->bottom for sides, left->right for bottom)
 

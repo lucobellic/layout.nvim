@@ -1,18 +1,8 @@
---- Autocommand wiring — detects tool buffers and triggers panel arrangement.
+--- Autocommand wiring and resize/placement coordination.
 ---
---- The events that trigger re-evaluation are declared globally in the
---- top-level `events` config key
---- Each event serves as a *trigger*:
---- when it fires, layout.nvim debounces and then re-scans all windows,
---- running each view's `filter(buf, win)` to classify ownership.
----
---- This two-phase design (event → trigger, filter → matcher)
---- means the timing of buffer option availability is the user's concern,
---- expressed through their choice of `events`, not a hardcoded assumption in the plugin.
----
---- On WinClosed: auto-save workspace state.
---- On DirChanged / VimEnter: auto-restore workspace.
---- On VimResized: debounced size capture.
+--- Managed panel resizes are captured immediately. Automatic placement is
+--- deferred until the resize stream has been quiet for the configured delay,
+--- preventing placement from restoring stale geometry while the user drags.
 
 local Panel = require('layout.entities.panel')
 local Restore = require('layout.features.restore')
@@ -20,65 +10,86 @@ local Save = require('layout.features.save')
 local Size = require('layout.entities.panel.model.size')
 local View = require('layout.entities.view')
 
+---@class Layout.Autocmds.Session
+---@field arrange_timer integer?
+---@field arrange_generation integer
+---@field resize_timer integer?
+---@field resize_generation integer
+---@field resize_active boolean
+---@field pending_arrange boolean
+
 ---@class Layout.Autocmds
 ---@field private registry Layout.Registry?
 ---@field private config Layout.Config?
----@field private augroup number?
----@field private debounce_timer number?
----@field private seen_wins table<integer, boolean> Snapshot of the last non-floating window set used to detect topology changes that produced no WinNew/WinClosed autocmds.
+---@field private augroup integer?
+---@field private sessions table<integer, Layout.Autocmds.Session> Sessions keyed by tabpage handle.
 local Autocmds = {
   registry = nil,
   config = nil,
   augroup = nil,
-  debounce_timer = nil,
-  seen_wins = {},
+  sessions = {},
 }
 
---- Snapshot the current non-floating window set.
----@private
----@return table<integer, boolean>
-local function current_win_set()
-  local wins = {}
-  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    if vim.api.nvim_win_get_config(winid).relative == '' then wins[winid] = true end
-  end
-  return wins
+---@param tabpage? integer
+---@return integer
+local function tab_id(tabpage)
+  return tabpage or vim.api.nvim_get_current_tabpage()
 end
 
---- Return whether the window topology changed since the last call, and
---- refresh the snapshot.
----
---- Plugins commonly create their windows under `eventignore=all`
---- (e.g. trouble.nvim mounts its split inside a noautocmd wrapper),
---- so WinNew/WinClosed never fire for them.
----
---- Diffing the window set on WinResized, which is triggered
---- from the main loop after eventignore is restored, before the next redraw,
---- is the only reliable detection point.
----@private
----@return boolean
-function Autocmds.wins_topology_changed()
-  local current = current_win_set()
-  local changed = false
-  for winid in pairs(current) do
-    if not Autocmds.seen_wins[winid] then
-      changed = true
-      break
-    end
+---@param tabpage? integer
+---@return Layout.Autocmds.Session
+local function session_for(tabpage)
+  local id = tab_id(tabpage)
+  if not Autocmds.sessions[id] then
+    Autocmds.sessions[id] = {
+      arrange_timer = nil,
+      arrange_generation = 0,
+      resize_timer = nil,
+      resize_generation = 0,
+      resize_active = false,
+      pending_arrange = false,
+    }
   end
-  if not changed then
-    for winid in pairs(Autocmds.seen_wins) do
-      if not current[winid] then
-        changed = true
-        break
-      end
-    end
-  end
-  Autocmds.seen_wins = current
-  return changed
+  return Autocmds.sessions[id]
 end
 
---- Return the global events list from the config, falling back to `{"FileType"}`.
+---@param timer integer?
+---@return nil
+local function stop_timer(timer)
+  if timer then pcall(vim.fn.timer_stop, timer) end
+end
+
+---@return integer
+local function resize_delay()
+  return (Autocmds.config and Autocmds.config.live_resize_debounce) or 250
+end
+
+---@return integer[]?
+local function resized_windows()
+  local event = vim.v.event
+  if type(event) ~= 'table' or type(event.windows) ~= 'table' then return nil end
+  return event.windows
+end
+
+---Run one pending arrangement if its tabpage is current and not resizing.
+---@param tabpage integer
+---@return nil
+local function run_pending_arrange(tabpage)
+  local session = session_for(tabpage)
+  if not session.pending_arrange or session.resize_active then return end
+  if not vim.api.nvim_tabpage_is_valid(tabpage) or vim.api.nvim_get_current_tabpage() ~= tabpage then return end
+
+  stop_timer(session.arrange_timer)
+  session.arrange_timer = nil
+  session.pending_arrange = false
+  local ok, err = pcall(Panel.arrange, Panel, Autocmds.registry)
+  if not ok then
+    session.pending_arrange = true
+    error(err)
+  end
+end
+
+---Return the configured event triggers, falling back to FileType.
 ---@private
 ---@return string[]
 function Autocmds:events_from_config()
@@ -86,68 +97,128 @@ function Autocmds:events_from_config()
   return { 'FileType' }
 end
 
---- Schedule a panel arrangement, coalescing triggers within the delay.
---- View-detection events use the default debounce; window lifecycle events
---- use a zero delay so geometry is corrected before a visible redraw.
+---Request automatic placement, coalescing requests per tabpage.
+---
+---Synchronous requests run immediately unless a resize stream is active. All
+---requests made during resizing remain pending and run once after quiet time.
 ---@private
 ---@param delay? integer
-function Autocmds:schedule_arrange(delay)
+---@param synchronous? boolean
+---@return nil
+function Autocmds:schedule_arrange(delay, synchronous)
   if not self.registry then return end
-  if self.debounce_timer then vim.fn.timer_stop(self.debounce_timer) end
-  self.debounce_timer = vim.fn.timer_start(delay or 50, function()
-    self.debounce_timer = nil
+  local tabpage = tab_id()
+  local session = session_for(tabpage)
+  session.pending_arrange = true
+  session.arrange_generation = session.arrange_generation + 1
+  stop_timer(session.arrange_timer)
+  session.arrange_timer = nil
+
+  if session.resize_active then return end
+  if synchronous then
+    run_pending_arrange(tabpage)
+    return
+  end
+
+  local generation = session.arrange_generation
+  session.arrange_timer = vim.fn.timer_start(delay == nil and 50 or delay, function()
+    session.arrange_timer = nil
     vim.schedule(function()
-      Panel:arrange(self.registry)
+      if session.arrange_generation ~= generation then return end
+      run_pending_arrange(tabpage)
     end)
   end)
 end
 
+---Mark a user resize stream active and restart its quiet-period timer.
+---@param tabpage integer
+---@return nil
+local function continue_resize(tabpage)
+  local session = session_for(tabpage)
+  session.resize_active = true
+  session.resize_generation = session.resize_generation + 1
+  session.arrange_generation = session.arrange_generation + 1
+  stop_timer(session.arrange_timer)
+  stop_timer(session.resize_timer)
+  session.arrange_timer = nil
+
+  local generation = session.resize_generation
+  session.resize_timer = vim.fn.timer_start(resize_delay(), function()
+    session.resize_timer = nil
+    vim.schedule(function()
+      if session.resize_generation ~= generation then return end
+      session.resize_active = false
+      run_pending_arrange(tabpage)
+    end)
+  end)
+end
+
+---Stop timers for a tab while preserving whether arrangement is pending.
+---@param tabpage integer
+---@return nil
+local function suspend_tab(tabpage)
+  local session = session_for(tabpage)
+  stop_timer(session.arrange_timer)
+  stop_timer(session.resize_timer)
+  session.arrange_timer = nil
+  session.resize_timer = nil
+  session.arrange_generation = session.arrange_generation + 1
+  session.resize_generation = session.resize_generation + 1
+  session.resize_active = false
+end
+
+---Remove timer state belonging to closed tabpages.
+---@return nil
+local function prune_tabs()
+  for tabpage, session in pairs(Autocmds.sessions) do
+    if not vim.api.nvim_tabpage_is_valid(tabpage) then
+      stop_timer(session.arrange_timer)
+      stop_timer(session.resize_timer)
+      Autocmds.sessions[tabpage] = nil
+    end
+  end
+  Size:prune_tabs()
+end
+
+---Initialize and wire autocommands.
 ---@public
 ---@param registry Layout.Registry
 ---@param config Layout.Config
+---@return nil
 function Autocmds:setup(registry, config)
+  for tabpage in pairs(self.sessions) do
+    suspend_tab(tabpage)
+  end
+  self.sessions = {}
   self.registry = registry
   self.config = config
-  self.seen_wins = current_win_set()
-  Autocmds:wire()
+  Size:initialize_tab()
+  self:wire()
 end
 
---- Create autocommand groups.
+---Create the plugin autocommand group.
 ---@package
+---@return nil
 function Autocmds:wire()
   if self.augroup then pcall(vim.api.nvim_del_augroup_by_id, self.augroup) end
   self.augroup = vim.api.nvim_create_augroup('Layout', { clear = true })
 
-  -- View-detection events: declared globally in the `events` config key.
-  local events = self:events_from_config()
-  vim.iter(events):each(function(event)
+  for _, event in ipairs(self:events_from_config()) do
     vim.api.nvim_create_autocmd(event, {
       group = self.augroup,
       callback = function()
         self:schedule_arrange()
       end,
     })
-  end)
+  end
 
-  -- Synchronous placement for already-classifiable buffers.
-  --
-  -- Autocmd callbacks run before the next redraw,
-  -- so arranging here moves a freshly shown tool window into its panel
-  -- without a visible intermediate frame.
-  --
-  -- Buffers the filters cannot classify yet (e.g. deferred filetype)
-  -- fall back to the debounced detection events above.
+  -- Keep the immediate no-flicker path unless a resize stream owns geometry.
   vim.api.nvim_create_autocmd('BufWinEnter', {
     group = self.augroup,
     callback = function(ev)
       if not self.registry then return end
       local side = View:match_by_buf(ev.buf, vim.api.nvim_get_current_win())
-      if not side then return end
-      if self.debounce_timer then
-        vim.fn.timer_stop(self.debounce_timer)
-        self.debounce_timer = nil
-      end
-      Panel:arrange(self.registry)
+      if side then self:schedule_arrange(0, true) end
     end,
   })
 
@@ -181,31 +252,45 @@ function Autocmds:wire()
   vim.api.nvim_create_autocmd('VimResized', {
     group = self.augroup,
     callback = function()
-      Size:update_live_debounced(self.config and self.config.live_resize_debounce or 250)
+      Size:mark_editor_resized()
+      self:schedule_arrange(resize_delay())
     end,
   })
 
   vim.api.nvim_create_autocmd('WinResized', {
     group = self.augroup,
     callback = function()
-      -- Always diff the window set so the snapshot stays fresh, even
-      -- when the WinNew/WinClosed flag already marked the topology dirty.
-      local wins_changed = Autocmds.wins_topology_changed()
-      if self.registry and wins_changed then
+      local tabpage = tab_id()
+      local session = session_for(tabpage)
+      local observation = Size:observe_resize(resized_windows(), session.resize_active)
+      if observation == 'captured' then continue_resize(tabpage) end
+
+      if Size:topology_changed() then
         Size:mark_topology_changed()
-        if Autocmds.debounce_timer then
-          vim.fn.timer_stop(Autocmds.debounce_timer)
-          Autocmds.debounce_timer = nil
-        end
-        Panel:arrange(self.registry)
-      else
-        -- A prior lifecycle event may have set the dirty flag even though its
-        -- topology has since been observed. This resize has no new topology,
-        -- so it is safe to resume live-size capture without reading collateral
-        -- dimensions from that earlier event.
-        if Size:topology_changed() then Size:settle_topology() end
-        Size:update_live_debounced(self.config and self.config.live_resize_debounce or 250)
+        self:schedule_arrange(0, true)
       end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('TabLeave', {
+    group = self.augroup,
+    callback = function()
+      suspend_tab(tab_id())
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('TabEnter', {
+    group = self.augroup,
+    callback = function()
+      Size:initialize_tab()
+      self:schedule_arrange(0)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('TabClosed', {
+    group = self.augroup,
+    callback = function()
+      prune_tabs()
     end,
   })
 end

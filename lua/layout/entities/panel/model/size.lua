@@ -1,37 +1,70 @@
---- Live panel size tracking — captures and remembers the current size of
---- managed panel windows so user-initiated resizes persist across
---- arrangement cycles.
+--- Panel size preferences and placement runtime state.
 ---
---- On each stable arrange cycle, `update_live()` scans windows tagged with
---- `layout_slot` and reads their width or height. Window topology changes
---- suspend capture until placement corrects the layout and commits it.
---- When no managed window exists for a side the tracked size is left
---- untouched, preserving the user's preference across panel close/reopen.
+--- Preferred sizes are shared across tabpages. Applied geometry, topology,
+--- and placement transaction state are tab-local so events in one tab cannot
+--- be mistaken for user resizing in another.
+
+---@class Layout.Panel.Model.Size.Runtime
+---@field applied table<Layout.Side, integer?> Dimensions committed by the last successful placement.
+---@field placed_windows table<integer, boolean>? Normal-window set committed by the last successful placement.
+---@field topology_dirty boolean Whether window lifecycle changes require placement.
+---@field editor_resized boolean Whether editor dimensions changed before relative sizes were reapplied.
+---@field capture_invalid boolean Whether failed placement geometry must not be captured.
+---@field placing boolean Whether a placement transaction is active.
+
+---@alias Layout.Panel.Model.Size.Observation
+---| '"captured"' # A managed panel changed and its preference was updated.
+---| '"expected"' # Managed panel geometry matches the last placement.
+---| '"unrelated"' # No managed panel was reported as resized.
+---| '"topology"' # Capture is unsafe because normal-window topology changed.
+---| '"ignored"' # Capture is locked by placement or editor resizing.
 
 ---@class Layout.Panel.Model.Size
----@field private sizes table<Layout.Side, integer?> Tracked panel sizes, one per side.
----@field private placed_windows table<integer, boolean>? Window set from the last successful placement cycle.
----@field private topology_dirty boolean Whether a window lifecycle event invalidated live-size capture.
----@field private debounce_timer number? Debounce timer for update_live_debounced.
+---@field private sizes table<Layout.Side, Layout.Size?> Shared tracked panel preferences.
+---@field private configured table<Layout.Side, Layout.Size?> Configured fallback used to preserve absolute/relative mode.
+---@field private runtime table<integer, Layout.Panel.Model.Size.Runtime> Runtime state keyed by tabpage handle.
 local Size = {
   sizes = {},
-  placed_windows = nil,
-  topology_dirty = false,
-  debounce_timer = nil,
+  configured = {},
+  runtime = {},
 }
 
---- Return the current non-floating tabpage window set.
----@private
----@return table<integer, boolean>
-local function current_window_set()
-  return vim.iter(vim.api.nvim_tabpage_list_wins(0)):fold({}, function(windows, winid)
-    if vim.api.nvim_win_get_config(winid).relative == '' then windows[winid] = true end
-    return windows
-  end)
+local SharedSize = require('layout.shared.size')
+
+---@param tabpage? integer
+---@return integer
+local function tab_id(tabpage)
+  return tabpage or vim.api.nvim_get_current_tabpage()
 end
 
---- Return whether two window sets contain the same ids.
----@private
+---@param tabpage? integer
+---@return Layout.Panel.Model.Size.Runtime
+local function runtime_for(tabpage)
+  local id = tab_id(tabpage)
+  if not Size.runtime[id] then
+    Size.runtime[id] = {
+      applied = {},
+      placed_windows = nil,
+      topology_dirty = false,
+      editor_resized = false,
+      capture_invalid = false,
+      placing = false,
+    }
+  end
+  return Size.runtime[id]
+end
+
+---Return the non-floating window set for a tabpage.
+---@param tabpage? integer
+---@return table<integer, boolean>
+local function current_window_set(tabpage)
+  local windows = {}
+  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tab_id(tabpage))) do
+    if vim.api.nvim_win_get_config(winid).relative == '' then windows[winid] = true end
+  end
+  return windows
+end
+
 ---@param left table<integer, boolean>
 ---@param right table<integer, boolean>
 ---@return boolean
@@ -45,130 +78,251 @@ local function same_window_set(left, right)
   return true
 end
 
---- Capture panel dimensions from the supplied windows.
----@private
+---@param win integer
+---@return Layout.Side?
+local function side_of(win)
+  local ok, slot = pcall(vim.api.nvim_win_get_var, win, 'layout_slot')
+  if not ok or type(slot) ~= 'string' then return nil end
+  if slot:match('^L') then return 'left' end
+  if slot:match('^R') then return 'right' end
+  if slot:match('^B') then return 'bottom' end
+  return nil
+end
+
+---Return managed sides represented by the changed-window list.
 ---@param wins integer[]
-function Size:capture_live(wins)
+---@param changed? integer[]
+---@return table<Layout.Side, boolean>
+local function managed_sides(wins, changed)
+  local changed_set = nil
+  if type(changed) == 'table' and #changed > 0 then
+    changed_set = {}
+    for _, win in ipairs(changed) do
+      local id = tonumber(win)
+      if id then changed_set[id] = true end
+    end
+  end
+
   ---@type table<Layout.Side, boolean>
-  local seen = {}
+  local sides = {}
+  for _, win in ipairs(wins) do
+    if not changed_set or changed_set[win] then
+      local side = side_of(win)
+      if side then sides[side] = true end
+    end
+  end
+  return sides
+end
+
+---Return the first managed panel dimension for each requested side.
+---@param wins integer[]
+---@param sides? table<Layout.Side, boolean>
+---@return table<Layout.Side, integer>
+local function panel_dimensions(wins, sides)
+  local dimensions = {}
   for _, win in ipairs(wins) do
     if vim.api.nvim_win_is_valid(win) then
-      local ok, slot = pcall(vim.api.nvim_win_get_var, win, 'layout_slot')
-      if ok and type(slot) == 'string' then
-        ---@type Layout.Side?
-        local side = nil
-        if slot:match('^L') then
-          side = 'left'
-        elseif slot:match('^R') then
-          side = 'right'
-        elseif slot:match('^B') then
-          side = 'bottom'
-        end
-        if side and not seen[side] then
-          seen[side] = true
-          if side == 'bottom' then
-            self.sizes[side] = vim.api.nvim_win_get_height(win)
-          else
-            self.sizes[side] = vim.api.nvim_win_get_width(win)
-          end
-        end
+      local side = side_of(win)
+      if side and (not sides or sides[side]) and dimensions[side] == nil then
+        dimensions[side] = side == 'bottom' and vim.api.nvim_win_get_height(win) or vim.api.nvim_win_get_width(win)
       end
     end
   end
+  return dimensions
 end
 
---- Clear all tracked sizes.
----@private
+---Return whether current topology matches the last committed placement.
+---@param runtime Layout.Panel.Model.Size.Runtime
+---@param tabpage? integer
+---@return boolean
+local function topology_is_stable(runtime, tabpage)
+  if not runtime.placed_windows then return false end
+  local stable = same_window_set(current_window_set(tabpage), runtime.placed_windows)
+  runtime.topology_dirty = not stable
+  return stable and not runtime.capture_invalid
+end
+
+---Capture selected managed panel dimensions as user preferences.
+---@param wins integer[]
+---@param runtime Layout.Panel.Model.Size.Runtime
+---@param changed? integer[]
+---@return boolean changed_preference
+---@return boolean observed_managed_side
+local function capture_dimensions(wins, runtime, changed)
+  local sides = managed_sides(wins, changed)
+  local observed = next(sides) ~= nil
+  if not observed then return false, false end
+
+  local editor_width, editor_height = SharedSize.editor_dimensions()
+  local captured = false
+  for side, actual in pairs(panel_dimensions(wins, sides)) do
+    local previous = runtime.applied[side]
+    if previous and actual ~= previous then
+      local preference = Size.sizes[side] or Size.configured[side]
+      if preference and SharedSize.is_relative(preference) then
+        local container = side == 'bottom' and editor_height or editor_width
+        Size.sizes[side] = SharedSize.to_fraction(actual, container)
+      else
+        Size.sizes[side] = math.max(1, actual)
+      end
+      runtime.applied[side] = actual
+      captured = true
+    end
+  end
+  return captured, true
+end
+
+---Clear all preferences and tab-local runtime state.
+---@package
+---@return nil
 function Size:clear()
   self.sizes = {}
-  self.placed_windows = nil
-  self.topology_dirty = false
-  if self.debounce_timer then
-    vim.fn.timer_stop(self.debounce_timer)
-    self.debounce_timer = nil
-  end
+  self.configured = {}
+  self.runtime = {}
 end
 
---- Explicitly set the tracked size for a side.
+---Explicitly set the shared tracked size for a side.
 ---@package
 ---@param side Layout.Side
----@param size integer
+---@param size Layout.Size
+---@return nil
 function Size:set(side, size)
+  SharedSize.validate(size)
   self.sizes[side] = size
 end
 
---- Return the tracked size for a side, falling back to the provided
---- config value when no size has been set for this side yet.
+---Return the shared tracked preference or configured fallback.
 ---@public
 ---@param side Layout.Side
----@param fallback integer
----@return integer
+---@param fallback Layout.Size
+---@return Layout.Size
 function Size:get(side, fallback)
+  self.configured[side] = fallback
   return self.sizes[side] or fallback
 end
 
---- Scan managed panel windows and update tracked sizes when the window
---- topology still matches the last successful placement.
----
---- Panel sizes are read from the first managed window per side
---- (width for L/R, height for bottom).  When a side has no managed
---- windows its tracked size stays as-is, so user resizes survive panel
---- close/reopen cycles.
+---Initialize an unseen tabpage without treating its geometry as a resize.
 ---@public
+---@param tabpage? integer
+---@return nil
+function Size:initialize_tab(tabpage)
+  local runtime = runtime_for(tabpage)
+  if runtime.placed_windows then return end
+  local wins = vim.api.nvim_tabpage_list_wins(tab_id(tabpage))
+  runtime.applied = panel_dimensions(wins)
+  runtime.placed_windows = current_window_set(tabpage)
+end
+
+---Capture current managed dimensions only when topology is stable.
+---@public
+---@return boolean captured
 function Size:update_live()
-  local wins = vim.api.nvim_tabpage_list_wins(0)
-  local current = current_window_set()
-  if self.topology_dirty then return end
-  if self.placed_windows and not same_window_set(current, self.placed_windows) then return end
-  self:capture_live(wins)
+  local runtime = runtime_for()
+  if runtime.placing or runtime.editor_resized then return false end
+  if not topology_is_stable(runtime) then return false end
+  local captured = capture_dimensions(vim.api.nvim_tabpage_list_wins(0), runtime)
+  return captured
 end
 
---- Capture corrected sizes and establish a new stable window topology.
---- This must only run after a successful placement cycle.
+---Observe a WinResized event and classify its managed-panel effect.
 ---@public
+---@param changed? integer[] Window ids from `vim.v.event.windows`.
+---@param allow_dirty? boolean Capture during known active user resizing even if topology changed.
+---@return Layout.Panel.Model.Size.Observation
+function Size:observe_resize(changed, allow_dirty)
+  local runtime = runtime_for()
+  if runtime.placing or runtime.editor_resized then return 'ignored' end
+  if runtime.capture_invalid then return 'topology' end
+  if not allow_dirty and not topology_is_stable(runtime) then return 'topology' end
+
+  local captured, observed = capture_dimensions(vim.api.nvim_tabpage_list_wins(0), runtime, changed)
+  if captured then return 'captured' end
+  if observed then return 'expected' end
+  return 'unrelated'
+end
+
+---Begin a placement transaction after capturing any stable user resize.
+---@public
+---@return boolean started
+function Size:begin_placement()
+  local runtime = runtime_for()
+  if runtime.placing then return false end
+  self:update_live()
+  runtime.placing = true
+  return true
+end
+
+---Commit corrected dimensions and topology after successful placement.
+---@public
+---@return nil
 function Size:commit_live()
-  self:capture_live(vim.api.nvim_tabpage_list_wins(0))
-  self.placed_windows = current_window_set()
-  self.topology_dirty = false
+  local runtime = runtime_for()
+  runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
+  runtime.placed_windows = current_window_set()
+  runtime.topology_dirty = false
+  runtime.editor_resized = false
+  runtime.capture_invalid = false
+  runtime.placing = false
 end
 
---- Establish the current window topology without reading panel dimensions.
---- This is used after every managed panel closes so its remembered size
---- survives while later stable resizes are no longer blocked as collateral.
+---Commit an empty/unmanaged topology without changing preferences.
 ---@public
+---@return nil
 function Size:settle_topology()
-  self.placed_windows = current_window_set()
-  self.topology_dirty = false
+  local runtime = runtime_for()
+  runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
+  runtime.placed_windows = current_window_set()
+  runtime.topology_dirty = false
+  runtime.editor_resized = false
+  runtime.capture_invalid = false
+  runtime.placing = false
 end
 
---- Prevent collateral window-layout changes from being recorded as user resizes.
+---Release a failed placement transaction while retaining its dirty state.
 ---@public
-function Size:mark_topology_changed()
-  self.topology_dirty = true
+---@return nil
+function Size:abort_placement()
+  local runtime = runtime_for()
+  runtime.placing = false
+  runtime.topology_dirty = true
+  runtime.capture_invalid = true
 end
 
---- Return whether panel sizes are currently invalidated by a topology change.
+---Mark current tabpage topology as requiring placement.
+---@public
+---@return nil
+function Size:mark_topology_changed()
+  runtime_for().topology_dirty = true
+end
+
+---Prevent editor resizing in every known tab from being captured as a panel preference.
+---@public
+---@return nil
+function Size:mark_editor_resized()
+  runtime_for().editor_resized = true
+  for _, runtime in pairs(self.runtime) do
+    runtime.editor_resized = true
+  end
+end
+
+---Return whether current topology differs from the committed topology.
 ---@public
 ---@return boolean
 function Size:topology_changed()
-  return self.topology_dirty
+  local runtime = runtime_for()
+  if runtime.placed_windows then
+    runtime.topology_dirty = not same_window_set(current_window_set(), runtime.placed_windows)
+  end
+  return runtime.topology_dirty or runtime.capture_invalid
 end
 
---- Schedule a debounced size capture.
----
---- Restarting the timer within `ms` milliseconds cancels the previous one,
---- so rapid-fire events (e.g. `VimResized` during a drag) only capture
---- sizes once the stream settles.
+---Discard runtime entries for tabpages that no longer exist.
 ---@public
----@param ms integer  debounce window in milliseconds
-function Size:update_live_debounced(ms)
-  if self.debounce_timer then vim.fn.timer_stop(self.debounce_timer) end
-  self.debounce_timer = vim.fn.timer_start(ms, function()
-    self.debounce_timer = nil
-    vim.schedule(function()
-      self:update_live()
-    end)
-  end)
+---@return nil
+function Size:prune_tabs()
+  for tabpage in pairs(self.runtime) do
+    if not vim.api.nvim_tabpage_is_valid(tabpage) then self.runtime[tabpage] = nil end
+  end
 end
 
 return Size

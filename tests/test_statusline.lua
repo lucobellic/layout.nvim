@@ -484,11 +484,14 @@ describe('features.statusline', function()
 
       local before = nwins(child)
 
-      -- Minwid 1 maps to the first group registered (left/explorer)
-      child.lua([[require('layout.features.statusline'):on_click(1, 1, 'l', '')]])
+      -- Given: minwid 1 maps to the first group (left/explorer)
+      -- When: Neovim invokes the v:lua callback without a module receiver
+      child.lua([[require('layout.features.statusline').on_click(1, 1, 'l', '')]])
       vim.wait(300, function()
         return true
       end)
+
+      -- Then: the group is toggled rather than treating minwid as `self`
       local after = nwins(child)
       expect.equality(after, before + 1)
     end)

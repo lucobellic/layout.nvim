@@ -108,30 +108,18 @@ end
 --- carrying their own copy.
 ---@public
 ---@param registry Layout.Registry
+---@return nil
 function Panel:set_registry(registry)
   self.registry = registry
 end
 
---- Scan the current tabpage, classify tool windows, build a Placement.Spec,
---- and apply the placement engine.
----
---- When called without an explicit registry the cached one (set via
----`set_registry`) is used, allowing features to drive arrangement.
----
---- Windows the filters cannot classify fall back to the `presumed` map,
---- letting a freshly opened view be placed before its buffer options
----(e.g. deferred `filetype`) are available to the filter.
----
----@public
----@param registry? Layout.Registry
+---Build and place the current tabpage panel layout.
+---@private
+---@param registry Layout.Registry
 ---@param presumed? Layout.Entity.Panel.Presumed
-function Panel:arrange(registry, presumed)
-  registry = registry or self.registry
-  if not registry then return end
+---@return boolean placed Whether managed slots were placed.
+local function arrange(registry, presumed)
   local current_wins = vim.api.nvim_tabpage_list_wins(0)
-
-  -- Capture user-initiated panel resizes before placement so they persist.
-  size_model:update_live()
 
   ---@type table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
   local raw = { left = {}, right = {}, bottom = {} }
@@ -161,10 +149,7 @@ function Panel:arrange(registry, presumed)
   local has_slots = vim.iter({ 'left', 'right', 'bottom' }):any(function(side)
     return #raw[side] > 0
   end)
-  if not has_slots then
-    size_model:settle_topology()
-    return
-  end
+  if not has_slots then return false end
 
   ---@type table<Layout.Side, { group: table<string, integer>, view: table<string, integer> }>
   local order_maps = {}
@@ -223,10 +208,36 @@ function Panel:arrange(registry, presumed)
     end
   end)
 
-  -- Commit corrected sizes and the new stable window topology.  A later
-  -- split/close must not turn Neovim's collateral panel resize into the
-  -- user's preferred size before another placement cycle corrects it.
-  size_model:commit_live()
+  return true
+end
+
+---Scan the current tabpage and transactionally apply its panel layout.
+---
+---Stable user geometry is captured before placement locks resize observation.
+---Successful placement commits expected dimensions; failure always releases
+---the lock while preserving dirty topology for a later retry.
+---
+---@public
+---@param registry? Layout.Registry
+---@param presumed? Layout.Entity.Panel.Presumed
+---@return nil
+function Panel:arrange(registry, presumed)
+  registry = registry or self.registry
+  if not registry or not size_model:begin_placement() then return end
+
+  local ok, placed = xpcall(function()
+    return arrange(registry, presumed)
+  end, debug.traceback)
+  if not ok then
+    size_model:abort_placement()
+    error(placed)
+  end
+
+  if placed then
+    size_model:commit_live()
+  else
+    size_model:settle_topology()
+  end
 end
 
 return Panel

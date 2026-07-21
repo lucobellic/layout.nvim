@@ -207,8 +207,8 @@ end
 ---@param button string
 ---@param mods string
 ---@diagnostic disable-next-line: unused-local
-function Statusline:on_click(minwid, clicks, button, mods)
-  local entry = self.click_map[minwid]
+function Statusline.on_click(minwid, clicks, button, mods)
+  local entry = Statusline.click_map[minwid]
   if not entry then return end
   Toggle.toggle_group(entry.side, entry.name)
   vim.cmd.redrawstatus()

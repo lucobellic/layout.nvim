@@ -158,6 +158,41 @@ describe('config.normalize', function()
       local reg = config.normalize(cfg)
       expect.equality(reg.left.size, 30) -- default from config.merge
     end)
+
+    it('preserves fractional panel and view sizes', function()
+      -- Given: panel and view sizes expressed as fractions
+      local cfg = config.merge({
+        left = {
+          size = 0.25,
+          groups = {
+            {
+              name = 'explorer',
+              views = {
+                { name = 'filesystem', filter = 'test', open = 'echo', size = 0.5 },
+              },
+            },
+          },
+        },
+      })
+
+      -- When: the config is normalized
+      local reg = config.normalize(cfg)
+
+      -- Then: fractions remain unresolved until their container is known
+      expect.equality(reg.left.size, 0.25)
+      expect.equality(reg.left.groups.explorer.views.filesystem.size, 0.5)
+    end)
+
+    it('rejects an invalid configured size', function()
+      -- Given: a panel size which is neither a fraction nor a positive integer
+      local cfg = config.merge({ left = { size = 0 } })
+
+      -- When: the config is normalized
+      local ok = pcall(config.normalize, cfg)
+
+      -- Then: setup fails instead of forwarding an invalid window dimension
+      expect.equality(ok, false)
+    end)
   end)
 
   describe('group and view registration', function()

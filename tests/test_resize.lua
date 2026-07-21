@@ -155,6 +155,193 @@ describe('panel resizing', function()
   end)
 
   --------------------------------------------------------------------------------
+  -- resize and placement coordination
+  --------------------------------------------------------------------------------
+  describe('resize and placement coordination', function()
+    it('defers automatic arrangement until a manual resize stream is quiet', function()
+      -- Given: an arranged panel with automatic events enabled
+      local cfg = U.test_config({
+        left = {
+          size = 30,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.live_resize_debounce = 100
+      U.setup_config(child, cfg)
+      local winL, bufL = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.lua([[
+        require("layout.autocmds"):setup(_G._reg, _G._c)
+        local Panel = require("layout.entities.panel")
+        local arrange = Panel.arrange
+        _G._automatic_arranges = 0
+        Panel.arrange = function(self, ...)
+          _G._automatic_arranges = _G._automatic_arranges + 1
+          return arrange(self, ...)
+        end
+      ]])
+
+      -- When: a manual resize is followed by an automatic event during its
+      -- quiet period
+      child.api.nvim_win_set_width(winL, 40)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {})]])
+      child.lua([[vim.api.nvim_exec_autocmds('FileType', { buffer = ... })]], { bufL })
+      child.lua([[vim.wait(60)]])
+
+      -- Then: placement has not fought the in-progress resize
+      expect.equality(child.lua_get([[_G._automatic_arranges]]), 0)
+      expect.equality(child.api.nvim_win_get_width(winL), 40)
+
+      -- When: the resize stream has been quiet for the configured delay
+      child.lua([[vim.wait(80)]])
+
+      -- Then: the pending arrangement runs once and keeps the final size
+      expect.equality(child.lua_get([[_G._automatic_arranges]]), 1)
+      expect.equality(child.api.nvim_win_get_width(winL), 40)
+    end)
+
+    it('does not restore an old panel size when topology changes during a resize stream', function()
+      -- Given: an active manual resize stream at width 35
+      local cfg = U.test_config({
+        left = {
+          size = 30,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.live_resize_debounce = 100
+      U.setup_config(child, cfg)
+      local winL = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.lua([[require("layout.autocmds"):setup(_G._reg, _G._c)]])
+      child.api.nvim_win_set_width(winL, 35)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {})]])
+
+      -- When: another normal window appears and the user continues dragging
+      child.lua([[
+        local eventignore = vim.o.eventignore
+        vim.o.eventignore = 'all'
+        vim.cmd('belowright split')
+        vim.o.eventignore = eventignore
+      ]])
+      child.api.nvim_win_set_width(winL, 38)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {})]])
+
+      -- Then: topology correction is deferred instead of restoring width 35
+      expect.equality(child.api.nvim_win_get_width(winL), 38)
+
+      -- When: dragging reaches width 40 and becomes quiet
+      child.api.nvim_win_set_width(winL, 40)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {}); vim.wait(140)]])
+
+      -- Then: one corrected layout retains the final user-selected width
+      expect.equality(child.api.nvim_win_get_width(winL), 40)
+      expect.equality(child.lua_get([[require("layout.entities.panel.model.size"):topology_changed()]]), false)
+    end)
+
+    it('releases the placement transaction after an error', function()
+      -- Given: a successfully arranged panel with an active resize stream
+      local cfg = U.test_config({
+        left = {
+          size = 30,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.live_resize_debounce = 100
+      U.setup_config(child, cfg)
+      local winL = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.lua([[require("layout.autocmds"):setup(_G._reg, _G._c)]])
+      child.api.nvim_win_set_width(winL, 35)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {})]])
+
+      -- When: a later placement mutates geometry before failing
+      child.lua(
+        [[
+        local Placement = require("layout.shared.placement")
+        local place = Placement.place
+        local win = ...
+        Placement.place = function()
+          vim.api.nvim_win_set_width(win, 20)
+          error("forced placement failure")
+        end
+        _G._placement_failed = not pcall(
+          require("layout.entities.panel").arrange,
+          require("layout.entities.panel"),
+          _G._reg
+        )
+        Placement.place = place
+      ]],
+        { winL }
+      )
+      expect.equality(child.lua_get([[_G._placement_failed]]), true)
+
+      -- When: failed partial geometry emits WinResized during the active stream
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {})]])
+
+      -- When: arrangement is retried
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+
+      -- Then: partial geometry was not captured and the lock was released
+      expect.equality(child.api.nvim_win_get_width(winL), 35)
+    end)
+
+    it('shares preferences without comparing applied geometry across tabpages', function()
+      -- Given: tab A has a manually resized left panel at width 40
+      local cfg = U.test_config({
+        left = {
+          size = 30,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.live_resize_debounce = 10
+      U.setup_config(child, cfg)
+      local winA = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.lua([[require("layout.autocmds"):setup(_G._reg, _G._c)]])
+      child.api.nvim_win_set_width(winA, 40)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {}); vim.wait(20)]])
+
+      -- When: tab B opens the same panel and changes the shared preference
+      child.cmd('tabnew')
+      local winB = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      expect.equality(child.api.nvim_win_get_width(winB), 40)
+      child.api.nvim_win_set_width(winB, 35)
+      child.lua([[vim.api.nvim_exec_autocmds('WinResized', {}); vim.wait(20)]])
+
+      -- Then: returning to tab A applies width 35 without adopting tab A's
+      -- previously committed width 40 as a new preference
+      child.cmd('tabprevious')
+      child.lua([[vim.wait(30)]])
+      expect.equality(child.api.nvim_win_get_width(winA), 35)
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
   -- new window in existing panel
   --------------------------------------------------------------------------------
   describe('new window in existing panel', function()
@@ -236,6 +423,93 @@ describe('panel resizing', function()
 
       -- Then: it opens at the configured size (fallback from registry)
       expect.equality(child.api.nvim_win_get_width(winL), 30)
+    end)
+
+    it('resizes a fractional panel when the editor dimensions change', function()
+      -- Given: a left panel configured to occupy one quarter of editor width
+      child.o.columns = 122
+      local cfg = U.test_config({
+        left = {
+          size = 0.25,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.live_resize_debounce = 10
+      U.setup_config(child, cfg)
+      local winL = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.lua([[require("layout.autocmds"):setup(_G._reg, _G._c)]])
+      expect.equality(child.api.nvim_win_get_width(winL), 30)
+
+      -- When: the editor grows from 122 to 162 columns
+      child.o.columns = 162
+      child.lua([[vim.api.nvim_exec_autocmds('VimResized', {}); vim.wait(100)]])
+
+      -- Then: the configured fraction is preserved and resolves to the new width
+      expect.equality(child.api.nvim_win_get_width(winL), 40)
+    end)
+
+    it('updates a fractional preference after a manual panel resize', function()
+      -- Given: a quarter-width panel in a 122-column editor
+      child.o.columns = 122
+      local cfg = U.test_config({
+        left = {
+          size = 0.25,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.live_resize_debounce = 10
+      U.setup_config(child, cfg)
+      local winL = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+
+      -- When: the user changes it to 40 columns, then the editor grows
+      child.api.nvim_win_set_width(winL, 40)
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.lua([[require("layout.autocmds"):setup(_G._reg, _G._c)]])
+      child.o.columns = 162
+      child.lua([[vim.api.nvim_exec_autocmds('VimResized', {}); vim.wait(100)]])
+
+      -- Then: the remembered 40/122 ratio is applied to the new editor width
+      expect.equality(child.api.nvim_win_get_width(winL), 53)
+    end)
+
+    it('does not retain a transient zero dimension as a fractional preference', function()
+      -- Given: an arranged fractional bottom panel
+      local cfg = U.test_config({
+        bottom = {
+          size = 0.25,
+          groups = {
+            terminal = {
+              views = {
+                shell = { filter = 'toolB', open = 'echo bottom' },
+              },
+            },
+          },
+        },
+      })
+      U.setup_config(child, cfg)
+      local winB = U.make_tool_win(child, 'toolB')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+
+      -- When: resize churn temporarily collapses the panel to zero rows
+      child.api.nvim_win_set_height(winB, 0)
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+
+      -- Then: arrangement restores a valid visible size without retaining zero
+      expect.equality(child.api.nvim_win_get_height(winB) >= 1, true)
     end)
   end)
 

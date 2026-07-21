@@ -4,6 +4,7 @@
 --- changing buffers, or rebuilding the window tree from scratch.
 
 local Shape = require('layout.shared.placement.shape')
+local Size = require('layout.shared.size')
 local Spec = require('layout.shared.placement.spec')
 
 ---@class Placement.Engine
@@ -232,11 +233,9 @@ end
 
 --- Resolve the stacking-axis size for each slot in a multi-slot region.
 ---
---- Slots with an explicit `size` keep it; size-less (flex) slots share
---- the remaining space equally, with any remainder added to the last
---- flex slot.  The available space is derived from the slots' current
---- stacking dimensions (they already fill the panel after shape
---- correction), so `sum(resolved) == sum(current)`.
+--- Explicit sizes are resolved and allocated in declaration order. Size-less
+--- slots share the remaining space, with any remainder added to the last flex
+--- slot. Every slot retains at least one cell when requests exceed the panel.
 ---@private
 ---@param slots Placement.Slot[]
 ---@param get_dim fun(win: integer): integer  current stacking dim (height for L/R, width for bottom)
@@ -251,33 +250,31 @@ local function resolve_stacking_sizes(slots, get_dim)
     raw_total = raw_total + get_dim(s.winid)
   end
 
-  local fixed_sum, flex_count = 0, 0
-  for _, s in ipairs(slots) do
-    if s.size then
-      fixed_sum = fixed_sum + s.size
+  local flex_count = vim.iter(slots):fold(0, function(count, slot)
+    return count + (slot.size == nil and 1 or 0)
+  end)
+  local remaining = math.max(0, raw_total - n)
+
+  for i, slot in ipairs(slots) do
+    if slot.size ~= nil then
+      local requested = Size.resolve(slot.size, raw_total)
+      local extra = math.min(math.max(0, requested - 1), remaining)
+      resolved[i] = 1 + extra
+      remaining = remaining - extra
     else
-      flex_count = flex_count + 1
+      resolved[i] = 1
     end
   end
 
-  if flex_count == 0 then
-    for _, s in ipairs(slots) do
-      resolved[#resolved + 1] = s.size
-    end
-    return resolved
-  end
-
-  local remaining = raw_total - fixed_sum
-  if remaining < 0 then remaining = 0 end
-  local each = math.floor(remaining / flex_count)
-  local extra = remaining - each * flex_count
-  local flex_idx = 0
-  for _, s in ipairs(slots) do
-    if s.size then
-      resolved[#resolved + 1] = s.size
-    else
-      flex_idx = flex_idx + 1
-      resolved[#resolved + 1] = each + (flex_idx == flex_count and extra or 0)
+  if flex_count > 0 then
+    local each = math.floor(remaining / flex_count)
+    local extra = remaining - each * flex_count
+    local flex_idx = 0
+    for i, slot in ipairs(slots) do
+      if slot.size == nil then
+        flex_idx = flex_idx + 1
+        resolved[i] = resolved[i] + each + (flex_idx == flex_count and extra or 0)
+      end
     end
   end
   return resolved
@@ -285,7 +282,9 @@ end
 
 ---@private
 ---@param spec Placement.Spec
-local function apply_sizes(spec)
+---@param editor_width integer
+---@param editor_height integer
+local function apply_sizes(spec, editor_width, editor_height)
   vim.iter({ 'left', 'right' }):each(function(key)
     local reg = spec[key]
     if reg then
@@ -293,7 +292,7 @@ local function apply_sizes(spec)
       local multi = #slots > 1
       local sizes = resolve_stacking_sizes(slots, vim.api.nvim_win_get_height)
       for i, slot in ipairs(slots) do
-        resize(slot.winid, reg.size, multi and sizes[i] or nil)
+        resize(slot.winid, Size.resolve(reg.size, editor_width), multi and sizes[i] or nil)
         vim.api.nvim_set_option_value('winfixwidth', true, { win = slot.winid })
         vim.api.nvim_set_option_value('winfixheight', multi, { win = slot.winid })
       end
@@ -306,7 +305,7 @@ local function apply_sizes(spec)
     local multi = #slots > 1
     local sizes = resolve_stacking_sizes(slots, vim.api.nvim_win_get_width)
     for i, slot in ipairs(slots) do
-      resize(slot.winid, multi and sizes[i] or nil, bottom.size)
+      resize(slot.winid, multi and sizes[i] or nil, Size.resolve(bottom.size, editor_height))
       vim.api.nvim_set_option_value('winfixwidth', multi, { win = slot.winid })
       vim.api.nvim_set_option_value('winfixheight', true, { win = slot.winid })
     end
@@ -389,10 +388,11 @@ function Engine.place(spec)
   local sources = source_windows(spec)
   local center = find_center(sources)
   local windows = window_map(spec, center)
+  local editor_width, editor_height = Size.editor_dimensions()
 
   with_deterministic_options(function()
     if not shape_is_correct(spec, windows) then correct_shape(spec, center) end
-    apply_sizes(spec)
+    apply_sizes(spec, editor_width, editor_height)
     tag_windows(windows)
   end, windows)
 end

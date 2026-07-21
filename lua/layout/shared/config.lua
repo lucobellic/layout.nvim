@@ -8,6 +8,10 @@
 ---| '"right"'  # Right panel column
 ---| '"bottom"' # Bottom panel row
 
+--- A shared panel/view size. Values between 0 and 1 are relative to the
+--- containing editor or panel axis; positive integers are absolute cells.
+---@alias Layout.Size number
+
 --- Buffer-local metadata exposed as `vim.b[bufnr].layout` for buffers managed
 --- by layout.nvim. Set `enabled` to `false` to exclude a buffer from future
 --- layout evaluation.
@@ -70,7 +74,7 @@
 ---@field left? Layout.Side.Entry Left panel configuration.
 ---@field right? Layout.Side.Entry Right panel configuration.
 ---@field bottom? Layout.Side.Entry Bottom panel configuration.
----@field live_resize_debounce? integer Debounce ms for live panel size capture during VimResized/WinResized events.
+---@field live_resize_debounce? integer Quiet period in ms before automatic placement resumes after panel/editor resizing.
 ---@field workspaces Layout.Workspaces
 ---@field statusline? Layout.Statusline.Opts Statusline rendering options for group icons.
 ---@field events? string[] Autocommand events that trigger re-evaluation of all views.  See `:help autocmd-events`.
@@ -80,7 +84,7 @@
 ---@field name string View identifier used in commands, restoration, and display title.
 ---@field filter string|fun(buf: integer, win: integer): boolean
 ---@field open string|fun()
----@field size? integer
+---@field size? Layout.Size Stacking height for left/right views or width for bottom views.
 ---@field bo? table<string, any>
 ---@field wo? table<string, any>
 
@@ -93,7 +97,7 @@
 ---| '"full"'          # bottom spans L+C+R full width
 
 ---@class Layout.Side.Entry
----@field size integer
+---@field size Layout.Size Width for left/right panels or height for the bottom panel.
 ---@field align? Layout.Align Bottom-only alignment (defaults to "full")
 ---@field groups? table<string, Layout.Group.Entry>
 ---@field _order? string[] Group names in declaration order
@@ -112,7 +116,7 @@ local defaults = {
   right = { size = 40 },
   bottom = { size = 15, align = 'full' },
   events = { 'FileType', 'WinEnter', 'BufWinEnter' },
-  live_resize_debounce = 150,
+  live_resize_debounce = 250,
   workspaces = {
     auto_save = true,
     auto_restore = true,
@@ -139,6 +143,8 @@ local Config = {
   defaults = defaults,
 }
 
+local Size = require('layout.shared.size')
+
 --- Merge user opts with defaults and return a resolved `Layout.Config`.
 ---@public
 ---@param opts? table
@@ -159,6 +165,8 @@ end
 ---@param config Layout.Config The merged config (values + defaults)
 ---@return Layout.Registry
 function Config.normalize(config)
+  ---@param sc table
+  ---@return table[]
   local function groups_from(sc)
     if sc.groups and type(sc.groups) == 'table' and sc.groups[1] ~= nil then return sc.groups end
     if sc[1] ~= nil then
@@ -174,6 +182,8 @@ function Config.normalize(config)
   return vim.iter({ 'left', 'right', 'bottom' }):fold({}, function(reg, side)
     local sc = config[side]
     if not sc then return reg end
+
+    Size.validate(sc.size or defaults[side].size, side .. '.size')
 
     ---@type Layout.Side.Entry
     local side_entry = { size = sc.size or defaults[side].size, groups = {}, _order = {}, align = sc.align }
@@ -194,6 +204,7 @@ function Config.normalize(config)
         if g.views and type(g.views) == 'table' and g.views[1] ~= nil then
           for _, vw in ipairs(g.views) do
             if vw.name and vw.filter ~= nil then
+              if vw.size ~= nil then Size.validate(vw.size, side .. '.' .. g.name .. '.' .. vw.name .. '.size') end
               group_entry.views[vw.name] = vw
               group_entry._order[#group_entry._order + 1] = vw.name
             end
