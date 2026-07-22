@@ -60,6 +60,8 @@ function Pick.prompt(refresh)
     vim.cmd.redrawstatus()
   end)
 
+  if char == '\27' then return end
+
   local group = keymap[char]
   if group then
     Pick.pick(group.side, group.name)
