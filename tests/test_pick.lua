@@ -61,4 +61,119 @@ describe('features.pick', function()
     -- Then: the matching group is dispatched
     expect.equality(child.lua_get([[_G._picked]]), { side = 'left', name = 'explorer' })
   end)
+
+  describe('Shared picker keys', function()
+    it('opens every group sharing a key', function()
+      -- Given: closed groups in every panel share the key "d".
+      U.setup_config(child, U.test_config({
+        left = {
+          groups = {
+            debug = {
+              picker = { key = 'd' },
+              views = {
+                left_tool = {
+                  filter = 'dev66_left',
+                  open = "let g:dev66_left_opened = get(g:, 'dev66_left_opened', 0) + 1 | belowright split | enew | setfiletype dev66_left",
+                },
+              },
+            },
+          },
+        },
+        right = {
+          groups = {
+            debug = {
+              picker = { key = 'd' },
+              views = {
+                right_tool = { filter = 'dev66_right' },
+              },
+            },
+          },
+        },
+        bottom = {
+          groups = {
+            debug = {
+              picker = { key = 'd' },
+              views = {
+                bottom_tool = {
+                  filter = 'dev66_bottom',
+                  open = "let g:dev66_bottom_opened = get(g:, 'dev66_bottom_opened', 0) + 1 | belowright split | enew | setfiletype dev66_bottom",
+                },
+              },
+            },
+          },
+        },
+      }))
+      child.lua([[vim.fn.getcharstr = function() return 'd' end]])
+
+      -- When: the picker receives the shared key.
+      child.lua([[require('layout.features.pick').prompt()]])
+      child.lua([[vim.wait(100, function() return false end)]])
+
+      -- Then: every matching group opens and each configured command runs.
+      expect.equality(child.lua_get([[vim.g.dev66_left_opened]]), 1)
+      expect.equality(child.lua_get([[vim.g.dev66_bottom_opened]]), 1)
+      expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('left', 'debug')]]), true)
+      expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('right', 'debug')]]), true)
+      expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('bottom', 'debug')]]), true)
+    end)
+
+    it('closes every group sharing a key', function()
+      -- Given: the shared groups are open, including one without an open command.
+      U.setup_config(child, U.test_config({
+        left = {
+          groups = {
+            debug = {
+              picker = { key = 'd' },
+              views = {
+                left_tool = {
+                  filter = 'dev66_left',
+                  open = 'belowright split | enew | setfiletype dev66_left',
+                },
+              },
+            },
+          },
+        },
+        right = {
+          groups = {
+            debug = {
+              picker = { key = 'd' },
+              views = {
+                right_tool = { filter = 'dev66_right' },
+              },
+            },
+          },
+        },
+        bottom = {
+          groups = {
+            debug = {
+              picker = { key = 'd' },
+              views = {
+                bottom_tool = {
+                  filter = 'dev66_bottom',
+                  open = 'belowright split | enew | setfiletype dev66_bottom',
+                },
+              },
+            },
+          },
+        },
+      }))
+      child.lua([[vim.fn.getcharstr = function() return 'd' end]])
+      child.lua([[require('layout.features.pick').prompt()]])
+      child.lua([[vim.wait(100, function() return false end)]])
+
+      -- When: the same key is pressed again.
+      child.lua([[require('layout.features.pick').prompt()]])
+
+      -- Then: all groups close, including the group with no open command.
+      expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('left', 'debug')]]), false)
+      expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('right', 'debug')]]), false)
+      expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('bottom', 'debug')]]), false)
+      expect.equality(child.lua_get([[
+        vim.iter(vim.api.nvim_tabpage_list_wins(0)):any(function(winid)
+          local ft = vim.bo[vim.api.nvim_win_get_buf(winid)].filetype
+          return ft == 'dev66_left' or ft == 'dev66_bottom'
+        end)
+      ]]), false)
+    end)
+  end)
 end)
