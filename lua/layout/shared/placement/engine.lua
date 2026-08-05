@@ -1,7 +1,8 @@
 --- Corrective window placement engine.
 ---
---- Moves existing windows into a declarative layout without closing windows,
---- changing buffers, or rebuilding the window tree from scratch.
+--- Moves existing windows into a declarative layout without closing windows
+--- or rebuilding the window tree from scratch. Source windows keep their
+--- buffers; a newly created center may load a hidden listed buffer.
 
 local Shape = require('layout.shared.placement.shape')
 local Size = require('layout.shared.size')
@@ -46,6 +47,22 @@ local function source_windows(spec)
   return sources
 end
 
+--- Most recently used listed buffer not shown in any window.
+---@private
+---@return integer?
+local function hidden_listed_bufnr()
+  return vim
+    .iter(vim.fn.getbufinfo({ buflisted = 1 }))
+    :filter(function(info)
+      return #(info.windows or {}) == 0
+    end)
+    :fold({ bufnr = nil, lastused = -1 }, function(acc, info)
+      local lastused = info.lastused or 0
+      if lastused > acc.lastused then return { bufnr = info.bufnr, lastused = lastused } end
+      return acc
+    end).bufnr
+end
+
 ---@private
 ---@param sources table<integer, boolean>
 ---@return integer
@@ -60,7 +77,7 @@ local function find_center(sources)
 
   local anchor = next(sources)
   if not anchor then return current end
-  local buf = vim.api.nvim_create_buf(false, true)
+  local buf = hidden_listed_bufnr() or vim.api.nvim_create_buf(false, true)
   return vim.api.nvim_open_win(buf, false, { split = 'right', win = anchor })
 end
 

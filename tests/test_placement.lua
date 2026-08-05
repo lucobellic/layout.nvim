@@ -111,6 +111,88 @@ describe('placement.place', function()
   end)
 
   --------------------------------------------------------------------------------
+  -- synthetic center buffer
+  --------------------------------------------------------------------------------
+  describe('synthetic center buffer', function()
+    it('loads a hidden listed buffer into the replacement center', function()
+      -- Given: one tool window (only source) + a listed file buffer not shown
+      U.prepare(child)
+      local tool = child.api.nvim_get_current_win()
+      local leftover = child.api.nvim_win_get_buf(tool)
+
+      local tool_buf = U.named_buf(child, 'toolL')
+      child.api.nvim_win_set_buf(tool, tool_buf)
+      child.api.nvim_buf_delete(leftover, { force = true })
+
+      local hidden = child.api.nvim_create_buf(true, false)
+      child.api.nvim_buf_set_name(hidden, 'hidden_editor.txt')
+
+      -- When: place the tool into a panel
+      place({
+        left = { size = 30, slots = { { winid = tool } } },
+      })
+
+      -- Then: a center window exists and shows that listed buffer
+      expect.equality(U.slot_buf(child, 'C'), hidden)
+      expect.equality(U.slot_buf(child, 'L1'), tool_buf)
+    end)
+
+    it('keeps a scratch center when no hidden listed buffer exists', function()
+      -- Given: only a tool window, no other listed buffers
+      U.prepare(child)
+      local tool = child.api.nvim_get_current_win()
+      local leftover = child.api.nvim_win_get_buf(tool)
+      local tool_buf = U.named_buf(child, 'toolL')
+      child.api.nvim_win_set_buf(tool, tool_buf)
+      child.api.nvim_buf_delete(leftover, { force = true })
+
+      -- Wipe any other listed buffers left over from other tabpages
+      child.lua([[
+        for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1 })) do
+          if #info.windows == 0 then
+            pcall(vim.api.nvim_buf_delete, info.bufnr, { force = true })
+          end
+        end
+      ]])
+
+      -- When: place the tool into a panel
+      place({
+        left = { size = 30, slots = { { winid = tool } } },
+      })
+
+      -- Then: center exists on an unlisted scratch buffer
+      local center_buf = U.slot_buf(child, 'C')
+      expect.equality(center_buf ~= nil, true)
+      expect.equality(child.api.nvim_get_option_value('buflisted', { buf = center_buf }), false)
+      expect.equality(U.slot_buf(child, 'L1'), tool_buf)
+    end)
+
+    it('does not reuse a listed buffer already visible in a panel window', function()
+      -- Given: tool shows a listed buffer; another listed buffer is hidden
+      U.prepare(child)
+      local tool = child.api.nvim_get_current_win()
+      local leftover = child.api.nvim_win_get_buf(tool)
+
+      local tool_listed = child.api.nvim_create_buf(true, false)
+      child.api.nvim_buf_set_name(tool_listed, 'tool_listed.txt')
+      child.api.nvim_win_set_buf(tool, tool_listed)
+
+      local hidden = child.api.nvim_create_buf(true, false)
+      child.api.nvim_buf_set_name(hidden, 'hidden_editor.txt')
+      child.api.nvim_buf_delete(leftover, { force = true })
+
+      -- When: place the tool
+      place({
+        left = { size = 30, slots = { { winid = tool } } },
+      })
+
+      -- Then: center shows the hidden one, not a duplicate of the panel buffer
+      expect.equality(U.slot_buf(child, 'C'), hidden)
+      expect.equality(U.slot_buf(child, 'L1'), tool_listed)
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
   -- from several unassigned windows
   --------------------------------------------------------------------------------
   describe('from several unassigned windows', function()
