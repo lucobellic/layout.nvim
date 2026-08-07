@@ -11,9 +11,9 @@ local Size = require('layout.entities.panel.model.size')
 local View = require('layout.entities.view')
 
 ---@class Layout.Autocmds.Session
----@field arrange_timer integer?
+---@field arrange_timer uv.uv_timer_t?
 ---@field arrange_generation integer
----@field resize_timer integer?
+---@field resize_timer uv.uv_timer_t?
 ---@field resize_generation integer
 ---@field resize_active boolean
 ---@field pending_arrange boolean
@@ -53,9 +53,11 @@ local function session_for(tabpage)
   return Autocmds.sessions[id]
 end
 
----@param timer integer?
+---@param timer uv.uv_timer_t?
 local function stop_timer(timer)
-  if timer then pcall(vim.fn.timer_stop, timer) end
+  if not timer or timer:is_closing() then return end
+  timer:stop()
+  timer:close()
 end
 
 ---@return integer
@@ -118,13 +120,11 @@ function Autocmds:schedule_arrange(delay, synchronous)
   end
 
   local generation = session.arrange_generation
-  session.arrange_timer = vim.fn.timer_start(delay == nil and 50 or delay, function()
+  session.arrange_timer = vim.defer_fn(function()
     session.arrange_timer = nil
-    vim.schedule(function()
-      if session.arrange_generation ~= generation then return end
-      run_pending_arrange(tabpage)
-    end)
-  end)
+    if session.arrange_generation ~= generation then return end
+    run_pending_arrange(tabpage)
+  end, delay ~= nil and delay or 50)
 end
 
 ---Mark a user resize stream active and restart its quiet-period timer.
@@ -139,14 +139,12 @@ local function continue_resize(tabpage)
   session.arrange_timer = nil
 
   local generation = session.resize_generation
-  session.resize_timer = vim.fn.timer_start(resize_delay(), function()
+  session.resize_timer = vim.defer_fn(function()
     session.resize_timer = nil
-    vim.schedule(function()
-      if session.resize_generation ~= generation then return end
-      session.resize_active = false
-      run_pending_arrange(tabpage)
-    end)
-  end)
+    if session.resize_generation ~= generation then return end
+    session.resize_active = false
+    run_pending_arrange(tabpage)
+  end, resize_delay())
 end
 
 ---Stop timers for a tab while preserving whether arrangement is pending.
