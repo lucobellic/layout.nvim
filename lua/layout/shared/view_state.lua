@@ -109,7 +109,6 @@ end
 ---@public
 ---@param views table<integer, Layout.Shared.ViewState.View>
 ---@param tabpage? integer
----@return nil
 function ViewState:restore(views, tabpage)
   tabpage = tabpage or vim.api.nvim_get_current_tabpage()
   if not vim.api.nvim_tabpage_is_valid(tabpage) then return end
@@ -130,7 +129,6 @@ end
 --- Refresh one editor view only when its tabpage topology is still stable.
 ---@public
 ---@param winid? integer
----@return nil
 function ViewState:update(winid)
   winid = winid or vim.api.nvim_get_current_win()
   if not vim.api.nvim_win_is_valid(winid) then return end
@@ -151,7 +149,6 @@ end
 
 --- Start lightweight tracking of user-driven cursor and viewport changes.
 ---@public
----@return nil
 function ViewState:setup()
   self.sessions = {}
   self:initialize(vim.api.nvim_get_current_tabpage())

@@ -174,7 +174,6 @@ end
 
 ---Clear all preferences and tab-local runtime state.
 ---@package
----@return nil
 function Size:clear()
   self.sizes = {}
   self.configured = {}
@@ -185,7 +184,6 @@ end
 ---@package
 ---@param side Layout.Side
 ---@param size Layout.Size
----@return nil
 function Size:set(side, size)
   SharedSize.validate(size)
   self.sizes[side] = size
@@ -204,7 +202,6 @@ end
 ---Initialize an unseen tabpage without treating its geometry as a resize.
 ---@public
 ---@param tabpage? integer
----@return nil
 function Size:initialize_tab(tabpage)
   local runtime = runtime_for(tabpage)
   if runtime.placed_windows then return end
@@ -254,7 +251,6 @@ end
 
 ---Commit corrected dimensions and topology after successful placement.
 ---@public
----@return nil
 function Size:commit_live()
   local runtime = runtime_for()
   runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
@@ -267,7 +263,6 @@ end
 
 ---Commit an empty/unmanaged topology without changing preferences.
 ---@public
----@return nil
 function Size:settle_topology()
   local runtime = runtime_for()
   runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
@@ -280,7 +275,6 @@ end
 
 ---Release a failed placement transaction while retaining its dirty state.
 ---@public
----@return nil
 function Size:abort_placement()
   local runtime = runtime_for()
   runtime.placing = false
@@ -290,14 +284,12 @@ end
 
 ---Mark current tabpage topology as requiring placement.
 ---@public
----@return nil
 function Size:mark_topology_changed()
   runtime_for().topology_dirty = true
 end
 
 ---Prevent editor resizing in every known tab from being captured as a panel preference.
 ---@public
----@return nil
 function Size:mark_editor_resized()
   runtime_for().editor_resized = true
   for _, runtime in pairs(self.runtime) do
@@ -318,7 +310,6 @@ end
 
 ---Discard runtime entries for tabpages that no longer exist.
 ---@public
----@return nil
 function Size:prune_tabs()
   for tabpage in pairs(self.runtime) do
     if not vim.api.nvim_tabpage_is_valid(tabpage) then self.runtime[tabpage] = nil end

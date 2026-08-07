@@ -36,7 +36,6 @@ end
 --- Opening retains side exclusivity; closing always includes every match.
 ---@private
 ---@param groups Layout.Feature.Pick.Group[]
----@return nil
 local function pick_groups(groups)
   local any_open = vim.iter(groups):any(function(group)
     return Workspace:is_open(group.side, group.name)

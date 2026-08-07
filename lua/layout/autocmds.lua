@@ -54,7 +54,6 @@ local function session_for(tabpage)
 end
 
 ---@param timer integer?
----@return nil
 local function stop_timer(timer)
   if timer then pcall(vim.fn.timer_stop, timer) end
 end
@@ -73,7 +72,6 @@ end
 
 ---Run one pending arrangement if its tabpage is current and not resizing.
 ---@param tabpage integer
----@return nil
 local function run_pending_arrange(tabpage)
   local session = session_for(tabpage)
   if not session.pending_arrange or session.resize_active then return end
@@ -104,7 +102,6 @@ end
 ---@private
 ---@param delay? integer
 ---@param synchronous? boolean
----@return nil
 function Autocmds:schedule_arrange(delay, synchronous)
   if not self.registry then return end
   local tabpage = tab_id()
@@ -132,7 +129,6 @@ end
 
 ---Mark a user resize stream active and restart its quiet-period timer.
 ---@param tabpage integer
----@return nil
 local function continue_resize(tabpage)
   local session = session_for(tabpage)
   session.resize_active = true
@@ -155,7 +151,6 @@ end
 
 ---Stop timers for a tab while preserving whether arrangement is pending.
 ---@param tabpage integer
----@return nil
 local function suspend_tab(tabpage)
   local session = session_for(tabpage)
   stop_timer(session.arrange_timer)
@@ -168,7 +163,6 @@ local function suspend_tab(tabpage)
 end
 
 ---Remove timer state belonging to closed tabpages.
----@return nil
 local function prune_tabs()
   for tabpage, session in pairs(Autocmds.sessions) do
     if not vim.api.nvim_tabpage_is_valid(tabpage) then
@@ -184,7 +178,6 @@ end
 ---@public
 ---@param registry Layout.Registry
 ---@param config Layout.Config
----@return nil
 function Autocmds:setup(registry, config)
   for tabpage in pairs(self.sessions) do
     suspend_tab(tabpage)
@@ -198,7 +191,6 @@ end
 
 ---Create the plugin autocommand group.
 ---@package
----@return nil
 function Autocmds:wire()
   if self.augroup then pcall(vim.api.nvim_del_augroup_by_id, self.augroup) end
   self.augroup = vim.api.nvim_create_augroup('Layout', { clear = true })

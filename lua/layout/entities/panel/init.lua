@@ -45,30 +45,36 @@ local Panel = {
 local function finalize_side_slots(side, raw, order)
   if #raw == 0 then return {} end
 
-  local with_key, without_key = {}, {}
-  for _, item in ipairs(raw) do
-    if item.key then
-      table.insert(with_key, item)
-    else
-      table.insert(without_key, item)
-    end
-  end
+  ---@alias RawSlotKeys { with_key: Layout.Entity.Panel.RawSlot[], without_key: Layout.Entity.Panel.RawSlot[] }
 
-  local total_counts = {}
-  for _, item in ipairs(raw) do
+  ---@param keys RawSlotKeys
+  ---@param item Layout.Entity.Panel.RawSlot
+  ---@type RawSlotKeys
+  local keys = vim.iter(raw):fold({ with_key = {}, without_key = {} }, function(keys, item)
+    local k = item.key and keys.with_key or keys.without_key
+    table.insert(k, item)
+    return keys
+  end)
+
+  ---@param total_counts table<string, Layout.Entity.Panel.RawSlot>
+  ---@param item Layout.Entity.Panel.RawSlot
+  ---@type table<string, Layout.Entity.Panel.RawSlot>
+  local total_counts = vim.iter(raw):fold({}, function(total_counts, item)
     total_counts[item.vname] = (total_counts[item.vname] or 0) + 1
-  end
+    return total_counts
+  end)
 
-  local max_idx = {}
-  for _, item in ipairs(with_key) do
+  ---@param max_idx table<string, number>
+  ---@param item Layout.Entity.Panel.RawSlot
+  ---@type table<string, number>
+  local max_idx = vim.iter(keys.with_key):fold({}, function(max_idx, item)
     local idx = item.key:match(':(%d+)$')
-    if idx then
-      local n = tonumber(idx)
-      max_idx[item.vname] = math.max(max_idx[item.vname] or 0, n)
-    end
-  end
+    if idx then max_idx[item.vname] = math.max(max_idx[item.vname] or 0, tonumber(idx)) end
+    return max_idx
+  end)
 
-  for _, item in ipairs(without_key) do
+  ---@param item Layout.Entity.Panel.RawSlot
+  vim.iter(keys.without_key):each(function(item)
     if total_counts[item.vname] > 1 then
       local n = (max_idx[item.vname] or 0) + 1
       max_idx[item.vname] = n
@@ -76,19 +82,24 @@ local function finalize_side_slots(side, raw, order)
     else
       item.key = side .. ':' .. item.vname
     end
-  end
+  end)
 
-  local slots = {}
-  for _, item in ipairs(raw) do
-    slots[#slots + 1] = {
-      winid = item.winid,
-      bufnr = item.bufnr,
-      _key = item.key,
-      _vname = item.vname,
-      _gname = item.gname,
-      size = item.ve and item.ve.size,
-    }
-  end
+  local slots = vim
+    .iter(raw)
+    :map(
+      ---@param item Layout.Entity.Panel.RawSlot
+      function(item)
+        return {
+          winid = item.winid,
+          bufnr = item.bufnr,
+          _key = item.key,
+          _vname = item.vname,
+          _gname = item.gname,
+          size = item.ve and item.ve.size,
+        }
+      end
+    )
+    :totable()
 
   table.sort(slots, function(a, b)
     local ga = order.group[a._gname or ''] or 9999
@@ -109,7 +120,6 @@ end
 --- carrying their own copy.
 ---@public
 ---@param registry Layout.Registry
----@return nil
 function Panel:set_registry(registry)
   self.registry = registry
 end
@@ -221,7 +231,6 @@ end
 ---@public
 ---@param registry? Layout.Registry
 ---@param presumed? Layout.Entity.Panel.Presumed
----@return nil
 function Panel:arrange(registry, presumed)
   registry = registry or self.registry
   if vim.fn.getcmdwintype() ~= '' or vim.v.exiting ~= vim.NIL then
