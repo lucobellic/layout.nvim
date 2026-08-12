@@ -96,29 +96,47 @@ describe('floating icon rail', function()
     expect.equality(config.col, 97)
   end)
 
-  it('uses picker keys while pick mode is active', function()
-    -- Given: a configured icon and picker key
-    local cfg = U.test_config({
-      left = {
-        groups = {
-          explorer = { picker = { icon = 'E', key = 'e' }, views = {} },
+  local pick_pose_text = {
+    left = { text = 'eE', highlights = { { 0, 1, 'LayoutPickInactiveLeft1' }, { 1, 2, 'LayoutInactiveLeft1' } } },
+    left_separator = { text = 'eE', highlights = { { 0, 1, 'LayoutPickInactiveLeft1' }, { 1, 2, 'LayoutInactiveLeft1' } } },
+    right = { text = 'Ee', highlights = { { 0, 1, 'LayoutInactiveLeft1' }, { 1, 2, 'LayoutPickInactiveLeft1' } } },
+    right_separator = { text = 'Ee', highlights = { { 0, 1, 'LayoutInactiveLeft1' }, { 1, 2, 'LayoutPickInactiveLeft1' } } },
+    icon = { text = 'e', highlights = { { 0, 1, 'LayoutPickInactiveLeft1' } } },
+  }
+
+  for pose, expected in pairs(pick_pose_text) do
+    it(('uses the %s statusline pick-key pose in picker mode'):format(pose), function()
+      -- Given: a rail with a configured icon, picker key, and statusline key pose
+      local cfg = U.test_config({
+        left = {
+          groups = {
+            explorer = { picker = { icon = 'E', key = 'e' }, views = {} },
+          },
         },
-      },
-    })
-    cfg.statusline = { rail = { enabled = true, groups = { top = 'left' } } }
-    child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
-    wait_for_rail()
+      })
+      cfg.statusline = {
+        pick_key_pose = pose,
+        rail = { enabled = true, width = 2, groups = { top = 'left' } },
+      }
+      child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
+      wait_for_rail()
 
-    -- When: picker mode is enabled and the rail is rendered
-    child.lua([[
-      require('layout.features.statusline').pick_mode = true
-      require('layout.features.rail'):render()
-    ]])
+      -- When: picker mode is enabled and the rail is rendered
+      child.lua([[
+        require('layout.features.statusline').pick_mode = true
+        require('layout.features.rail'):render()
+      ]])
 
-    -- Then: the key replaces the icon in the one-column rail
-    local rail = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]]=])
-    expect.equality(child.api.nvim_buf_get_lines(rail.bufnr, 0, 1, false), { 'e' })
-  end)
+      -- Then: the key follows the pose and only the key receives the pick highlight
+      local rail = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]]=])
+      expect.equality(child.api.nvim_buf_get_lines(rail.bufnr, 0, 1, false), { expected.text })
+      local marks = child.api.nvim_buf_get_extmarks(rail.bufnr, -1, 0, -1, { details = true })
+      local highlights = vim.tbl_map(function(mark)
+        return { mark[3], mark[4].end_col, mark[4].hl_group }
+      end, marks)
+      expect.equality(highlights, expected.highlights)
+    end)
+  end
 
   it('adds configured left padding to icons and picker keys', function()
     -- Given: a four-column rail with two columns of left padding
@@ -145,7 +163,7 @@ describe('floating icon rail', function()
 
     -- Then: both values are indented without changing the configured rail width
     expect.equality(icon, { '  E' })
-    expect.equality(child.api.nvim_buf_get_lines(rail.bufnr, 0, 1, false), { '  e' })
+    expect.equality(child.api.nvim_buf_get_lines(rail.bufnr, 0, 1, false), { '  Ee' })
     expect.equality(child.api.nvim_win_get_width(rail.winid), 4)
   end)
 

@@ -10,6 +10,7 @@ local Statusline = require('layout.features.statusline')
 
 ---@class Layout.Feature.Rail
 ---@field opts Layout.Statusline.Rail.Opts?
+---@field pick_key_pose Layout.Statusline.PickKeyPose
 ---@field clickable boolean
 ---@field augroup integer?
 ---@field setup_generation integer
@@ -20,6 +21,7 @@ local Statusline = require('layout.features.statusline')
 ---@field hover_line table<integer, integer> Hovered entry line keyed by tabpage.
 local Rail = {
   opts = nil,
+  pick_key_pose = 'icon',
   clickable = true,
   augroup = nil,
   setup_generation = 0,
@@ -35,15 +37,58 @@ local Rail = {
 ---@return string?
 local function highlight(entry, hovered)
   if hovered then return Statusline:hover_highlight(entry.side, entry.index) end
-  local category = Statusline.pick_mode and 'Pick' or ''
-  return Statusline:highlight_group(category, entry.active, entry.side, entry.index)
+  return Statusline:highlight_group('', entry.active, entry.side, entry.index)
+end
+
+---@param bufnr integer
+---@param line integer
+---@param group string?
+---@param start_col integer
+---@param end_col integer
+---@return nil
+local function add_highlight(bufnr, line, group, start_col, end_col)
+  if group then vim.api.nvim_buf_add_highlight(bufnr, -1, group, line - 1, start_col, end_col) end
+end
+
+---@param bufnr integer
+---@param line integer
+---@param entry Layout.Statusline.Entry
+---@return nil
+local function add_entry_highlights(bufnr, line, entry)
+  local padding = Rail.opts and Rail.opts.padding or 0
+  local icon_group = highlight(entry)
+  if not Statusline.pick_mode then
+    add_highlight(bufnr, line, icon_group, padding, padding + #entry.icon)
+    return
+  end
+
+  local pick_group = Statusline:highlight_group('Pick', entry.active, entry.side, entry.index)
+  if Rail.pick_key_pose == 'icon' then
+    add_highlight(bufnr, line, pick_group, padding, padding + #entry.key)
+  elseif Rail.pick_key_pose == 'left' or Rail.pick_key_pose == 'left_separator' then
+    add_highlight(bufnr, line, pick_group, padding, padding + #entry.key)
+    add_highlight(bufnr, line, icon_group, padding + #entry.key, padding + #entry.key + #entry.icon)
+  else
+    add_highlight(bufnr, line, icon_group, padding, padding + #entry.icon)
+    add_highlight(bufnr, line, pick_group, padding + #entry.icon, padding + #entry.icon + #entry.key)
+  end
 end
 
 ---@param entry Layout.Statusline.Entry
 ---@return string
 local function entry_text(entry)
   local padding = Rail.opts and Rail.opts.padding or 0
-  return string.rep(' ', padding) .. (Statusline.pick_mode and entry.key or entry.icon)
+  local text = entry.icon
+  if Statusline.pick_mode then
+    if Rail.pick_key_pose == 'icon' then
+      text = entry.key
+    elseif Rail.pick_key_pose == 'left' or Rail.pick_key_pose == 'left_separator' then
+      text = entry.key .. entry.icon
+    else
+      text = entry.icon .. entry.key
+    end
+  end
+  return string.rep(' ', padding) .. text
 end
 
 ---@param tabpage integer
@@ -260,8 +305,12 @@ function Rail:render()
   vim.bo[state.bufnr].modifiable = false
   vim.api.nvim_buf_clear_namespace(state.bufnr, -1, 0, -1)
   for index, entry in pairs(state.entries) do
-    local group = highlight(entry, self.hover_line[tabpage] == index)
-    if group then vim.api.nvim_buf_add_highlight(state.bufnr, -1, group, index - 1, 0, -1) end
+    local hovered = self.hover_line[tabpage] == index
+    if hovered then
+      add_highlight(state.bufnr, index, highlight(entry, true), 0, -1)
+    else
+      add_entry_highlights(state.bufnr, index, entry)
+    end
   end
 end
 
@@ -343,10 +392,12 @@ end
 ---@public
 ---@param opts Layout.Statusline.Rail.Opts
 ---@param clickable boolean
+---@param pick_key_pose Layout.Statusline.PickKeyPose
 ---@return nil
-function Rail:setup(opts, clickable)
+function Rail:setup(opts, clickable, pick_key_pose)
   self.opts = vim.deepcopy(opts)
   self.clickable = clickable
+  self.pick_key_pose = pick_key_pose
   self.setup_generation = self.setup_generation + 1
   self.last_win = {}
   ensure_mouse_mapping()

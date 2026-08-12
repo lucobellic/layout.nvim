@@ -13,6 +13,7 @@ require('layout').setup({
     colors = {
       hover = 'PmenuSel', -- highlight linked by hovered rail icons
     },
+    pick_key_pose = 'right_separator', -- rail maps separator poses to their side
     rail = {
       enabled = true,
       hover = true, -- opt in to mouse hover highlighting
@@ -30,8 +31,10 @@ require('layout').setup({
 })
 ```
 
-The rail uses the existing statusline highlights, picker keys, active state,
-and click handling. Float mode overlays the outermost editor column. Buffer
+The rail uses the existing statusline highlights, picker keys, `pick_key_pose`,
+active state, and click handling. In picker mode, `left` and `left_separator`
+place the key before the icon, `right` and `right_separator` place it after the
+icon, and `icon` replaces the icon. Float mode overlays the outermost editor column. Buffer
 mode reserves a fixed-width, full-height split outside all left, right,
 and bottom panels. Buffer rails remain focusable and clickable. While one is
 entered, layout.nvim returns focus to an editor window so the rail can remain
