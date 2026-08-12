@@ -10,6 +10,7 @@ local Toggle = require('layout.features.toggle')
 local Workspace = require('layout.entities.workspace')
 local Group = require('layout.entities.group')
 local Statusline = require('layout.features.statusline')
+local Rail = require('layout.features.rail')
 
 ---@class Layout.Feature.Pick
 local Pick = {}
@@ -80,6 +81,7 @@ function Pick.prompt(refresh)
   end
 
   Statusline.pick_mode = true
+  Rail:render()
   if refresh then pcall(refresh) end
   vim.schedule(function()
     vim.cmd.redrawtabline()
@@ -89,6 +91,7 @@ function Pick.prompt(refresh)
   local char = vim.fn.getcharstr()
 
   Statusline.pick_mode = false
+  Rail:render()
   if refresh then pcall(refresh) end
   vim.schedule(function()
     vim.cmd.redrawtabline()

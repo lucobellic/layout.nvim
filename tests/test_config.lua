@@ -87,6 +87,41 @@ describe('config.normalize', function()
       expect.equality(v.bo.buflisted, false)
       expect.equality(v.wo.number, false)
     end)
+
+    it('rejects unknown rail group sides', function()
+      -- Given: a rail section mapped to an unsupported panel side
+      local cfg = {
+        statusline = {
+          rail = {
+            groups = { top = 'invalid' },
+          },
+        },
+      }
+
+      -- When: the config is merged
+      local ok = pcall(config.merge, cfg)
+
+      -- Then: setup fails with invalid configuration
+      expect.equality(ok, false)
+    end)
+
+    it('defaults rail window options and rejects invalid values', function()
+      -- Given: no explicit window options and separate configs with invalid values
+      local merged = config.merge({})
+
+      -- When: the configurations are validated
+      local mode_ok = pcall(config.merge, { statusline = { rail = { mode = 'invalid' } } })
+      local width_ok = pcall(config.merge, { statusline = { rail = { width = 1.5 } } })
+      local padding_ok = pcall(config.merge, { statusline = { rail = { width = 2, padding = 2 } } })
+
+      -- Then: existing configurations retain their appearance and invalid values fail
+      expect.equality(merged.statusline.rail.mode, 'float')
+      expect.equality(merged.statusline.rail.width, 1)
+      expect.equality(merged.statusline.rail.padding, 0)
+      expect.equality(mode_ok, false)
+      expect.equality(width_ok, false)
+      expect.equality(padding_ok, false)
+    end)
   end)
 
   describe('entry filtering', function()

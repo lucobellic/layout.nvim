@@ -30,8 +30,10 @@ local view_state = require('layout.shared.view_state')
 
 ---@class Layout.Entity.Panel
 ---@field registry Layout.Registry? Registry reference for the current tabpage, set via `set_registry`.
+---@field rail Layout.Feature.Rail? Rail provider included in placement when using buffer mode.
 local Panel = {
   registry = nil,
+  rail = nil,
 }
 
 --- Assign per-occurrence keys to raw slots on a side and return the final
@@ -124,6 +126,14 @@ function Panel:set_registry(registry)
   self.registry = registry
 end
 
+---Set the rail provider used to reserve buffer-mode rails during placement.
+---@public
+---@param rail Layout.Feature.Rail
+---@return nil
+function Panel:set_rail(rail)
+  self.rail = rail
+end
+
 ---Build and place the current tabpage panel layout.
 ---@private
 ---@param registry Layout.Registry
@@ -160,7 +170,8 @@ local function arrange(registry, presumed)
   local has_slots = vim.iter({ 'left', 'right', 'bottom' }):any(function(side)
     return #raw[side] > 0
   end)
-  if not has_slots then return false end
+  local rail = Panel.rail and Panel.rail:placement_spec() or nil
+  if not has_slots and not rail then return false end
 
   ---@type table<Layout.Side, { group: table<string, integer>, view: table<string, integer> }>
   local order_maps = {}
@@ -192,6 +203,7 @@ local function arrange(registry, presumed)
 
   ---@type Placement.Spec
   local spec = { center = true }
+  spec.rail = rail
   vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
     local se = registry[side]
     if se and #side_slots[side] > 0 then

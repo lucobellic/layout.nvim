@@ -11,6 +11,7 @@ local Commands = require('layout.commands')
 local Config = require('layout.shared.config')
 local Group = require('layout.entities.group')
 local Panel = require('layout.entities.panel')
+local Rail = require('layout.features.rail')
 local Restore = require('layout.features.restore')
 local Statusline = require('layout.features.statusline')
 local Ui = require('layout.shared.ui')
@@ -36,6 +37,7 @@ function M.setup(opts)
   View:register(registry)
   Group:register(registry)
   Panel:set_registry(registry)
+  Panel:set_rail(Rail)
   ViewState:setup()
 
   if resolved.statusline then
@@ -45,6 +47,9 @@ function M.setup(opts)
       counts[side] = #Group:list(side)
     end
     Ui:setup(counts, resolved.statusline.colors)
+    Rail:setup(resolved.statusline.rail, resolved.statusline.clickable)
+  else
+    Rail:setup({ enabled = false, mode = 'float', position = 'left', width = 1, padding = 0, groups = {} }, false)
   end
 
   Autocmds:setup(registry, resolved)

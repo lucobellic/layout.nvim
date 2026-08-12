@@ -82,7 +82,16 @@ function Shape.build(spec)
   else
     error('placement: unknown align ' .. tostring(Spec.align_of(spec)))
   end
-  return collapse(root)
+  root = collapse(root)
+  if spec.rail then
+    local rail = { 'leaf', spec.rail.slot.label }
+    if spec.rail.position == 'left' then
+      root = { 'row', { rail, root } }
+    else
+      root = { 'row', { root, rail } }
+    end
+  end
+  return root
 end
 
 --- Match a raw winlayout tree against a target shape.

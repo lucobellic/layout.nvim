@@ -44,6 +44,15 @@ local function source_windows(spec)
       end
     end)
   end)
+  if spec.rail then
+    local slot = spec.rail.slot
+    if normal(slot.winid) then
+      if sources[slot.winid] then error('placement: rail window is assigned to more than one slot') end
+      sources[slot.winid] = true
+    else
+      error('placement: rail requires a valid non-floating winid')
+    end
+  end
   return sources
 end
 
@@ -92,6 +101,7 @@ local function window_map(spec, center)
       windows[slot.label] = slot.winid
     end)
   end)
+  if spec.rail then windows.Q = spec.rail.slot.winid end
   return windows
 end
 
@@ -234,6 +244,7 @@ local function correct_shape(spec, center)
   stack_region(spec.left, false)
   stack_region(spec.right, false)
   stack_region(spec.bottom, true)
+  if spec.rail then move_to_edge(spec.rail.slot.winid, spec.rail.position == 'left' and 'H' or 'L') end
 end
 
 ---@private
@@ -309,6 +320,12 @@ end
 ---@param editor_width integer
 ---@param editor_height integer
 local function apply_sizes(spec, editor_width, editor_height)
+  if spec.rail then
+    resize(spec.rail.slot.winid, Size.resolve(spec.rail.size, editor_width), nil)
+    vim.api.nvim_set_option_value('winfixwidth', true, { win = spec.rail.slot.winid })
+    vim.api.nvim_set_option_value('winfixheight', false, { win = spec.rail.slot.winid })
+  end
+
   vim.iter({ 'left', 'right' }):each(function(key)
     local reg = spec[key]
     if reg then
@@ -334,6 +351,7 @@ local function apply_sizes(spec, editor_width, editor_height)
       vim.api.nvim_set_option_value('winfixheight', true, { win = slot.winid })
     end
   end
+
 end
 
 --- Run fn with deterministic window options, then restore them.

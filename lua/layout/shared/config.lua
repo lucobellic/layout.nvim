@@ -56,6 +56,27 @@
 ---@field separator_active string Link target for LayoutSeparatorActive highlight group
 ---@field separator_inactive string Link target for LayoutSeparatorInactive highlight group
 
+---@alias Layout.Statusline.Rail.Position
+---| '"left"' # Occupy the far-left editor column
+---| '"right"' # Occupy the far-right editor column
+
+---@alias Layout.Statusline.Rail.Mode
+---| '"float"' # Overlay the editor without changing the split layout
+---| '"buffer"' # Reserve a fixed-width normal window at the editor edge
+
+---@class Layout.Statusline.Rail.Opts
+---@field enabled boolean Show all configured group icons in a fixed-width window.
+---@field mode Layout.Statusline.Rail.Mode Rail window implementation.
+---@field position Layout.Statusline.Rail.Position Editor edge occupied by the rail.
+---@field width integer Fixed rail width in columns.
+---@field padding integer Spaces inserted before each icon within the configured width.
+---@field groups Layout.Statusline.Rail.Groups Panel side displayed in each vertical section.
+
+---@class Layout.Statusline.Rail.Groups
+---@field top? Layout.Side Panel groups anchored at the top.
+---@field middle? Layout.Side Panel groups centered vertically.
+---@field bottom? Layout.Side Panel groups anchored at the bottom.
+
 --- Statusline rendering options for group icons.
 ---@class Layout.Statusline.Opts
 ---@field separators { [1]: string, [2]: string } Left and right separators around each icon
@@ -63,6 +84,7 @@
 ---@field colored boolean Enable highlight support (%#LayoutActive...#)
 ---@field pick_key_pose Layout.Statusline.PickKeyPose Position of the pick key relative to the icon
 ---@field colors Layout.Statusline.Colors Highlight color mappings
+---@field rail Layout.Statusline.Rail.Opts Fixed-width icon rail options.
 
 ---@class Layout.Workspaces
 ---@field auto_save boolean Write layout on view changes.
@@ -127,6 +149,18 @@ local defaults = {
     clickable = true,
     colored = true,
     pick_key_pose = 'right_separator',
+    rail = {
+      enabled = false,
+      mode = 'float',
+      position = 'left',
+      width = 1,
+      padding = 0,
+      groups = {
+        top = 'left',
+        middle = 'bottom',
+        bottom = 'right',
+      },
+    },
     colors = {
       active = 'Normal',
       inactive = 'Comment',
@@ -150,7 +184,33 @@ local Size = require('layout.shared.size')
 ---@param opts? table
 ---@return Layout.Config
 function Config.merge(opts)
-  return vim.tbl_deep_extend('force', defaults, opts or {})
+  local merged = vim.tbl_deep_extend('force', defaults, opts or {})
+  local rail = merged.statusline and merged.statusline.rail
+  if rail and rail.position ~= 'left' and rail.position ~= 'right' then
+    error('statusline.rail.position must be "left" or "right"')
+  end
+  if rail and rail.mode ~= 'float' and rail.mode ~= 'buffer' then
+    error('statusline.rail.mode must be "float" or "buffer"')
+  end
+  if rail and (type(rail.width) ~= 'number' or rail.width < 1 or math.floor(rail.width) ~= rail.width) then
+    error('statusline.rail.width must be a positive integer')
+  end
+  if
+    rail
+    and (type(rail.padding) ~= 'number' or rail.padding < 0 or math.floor(rail.padding) ~= rail.padding or rail.padding >= rail.width)
+  then
+    error('statusline.rail.padding must be a non-negative integer smaller than statusline.rail.width')
+  end
+  local groups = rail and rail.groups or {}
+  for section, side in pairs(groups) do
+    if section ~= 'top' and section ~= 'middle' and section ~= 'bottom' then
+      error(('statusline.rail.groups contains unknown section %q'):format(section))
+    end
+    if side ~= 'left' and side ~= 'right' and side ~= 'bottom' then
+      error(('statusline.rail.groups.%s must be "left", "right", or "bottom"'):format(section))
+    end
+  end
+  return merged
 end
 
 --- Normalize a merged config into a structured registry.

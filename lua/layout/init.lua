@@ -63,6 +63,13 @@ function M.get_statusline(side)
   return require('layout.features.statusline'):get_statusline(side)
 end
 
+---Toggle the configured icon rail globally.
+---@public
+---@return boolean enabled Whether the rail is visible after toggling.
+function M.toggle_rail()
+  return require('layout.features.rail'):toggle()
+end
+
 --- Enable or disable layout management for an already-managed buffer.
 --- Disabling takes effect immediately for panel operations.
 --- Re-enabling also arranges the buffer into its recorded panel.

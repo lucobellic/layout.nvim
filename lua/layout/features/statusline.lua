@@ -16,6 +16,15 @@ local View = require('layout.entities.view')
 ---@field key string Group key (for pick mode injection; empty when unset)
 ---@field minwid integer Sequential id for the %@v:lua click region
 
+---@class Layout.Statusline.Entry
+---@field side Layout.Side
+---@field index integer 1-based position within the side
+---@field name string
+---@field icon string
+---@field key string
+---@field minwid integer
+---@field active boolean
+
 ---@class Layout.Feature.Statusline
 ---@field public pick_mode boolean Whether pick mode is currently active (shows group keys next to icons)
 ---@field private cache table<Layout.Side, Layout.Statusline.Cache.Line[]> Cached per-side group lines
@@ -37,14 +46,17 @@ local function capitalize(str)
   return str:sub(1, 1):upper() .. str:sub(2)
 end
 
---- Build a statusline highlight marker: %#Layout{Category}{Side}{Index}#.
----@private
----@param category string Active, Inactive, PickActive, PickInactive, SeparatorActive, SeparatorInactive
+---Return the configured highlight group for a group entry state.
+---@public
+---@param category string ''|'Pick'|'Separator'
+---@param is_active boolean
 ---@param side Layout.Side
----@param index integer 1-based index within the side
----@return string
-local function stl_highlight(category, side, index)
-  return '%#Layout' .. category .. capitalize(side) .. index .. '#'
+---@param index integer
+---@return string?
+function Statusline:highlight_group(category, is_active, side, index)
+  if not self.opts.colored then return nil end
+  local state = is_active and 'Active' or 'Inactive'
+  return 'Layout' .. category .. state .. capitalize(side) .. index
 end
 
 --- Scan all tabpage windows and classify them to build an active-map
@@ -62,6 +74,29 @@ local function compute_active()
     end
   end)
   return active
+end
+
+---Return cached group entries with their current active state.
+---The ordering is left, right, bottom and declaration order within each side.
+---@public
+---@return Layout.Statusline.Entry[]
+function Statusline:get_entries()
+  local active = compute_active()
+  local entries = {}
+  for _, side in ipairs({ 'left', 'right', 'bottom' }) do
+    for index, line in ipairs(self.cache[side] or {}) do
+      entries[#entries + 1] = {
+        side = side,
+        index = index,
+        name = line.name,
+        icon = line.icon,
+        key = line.key,
+        minwid = line.minwid,
+        active = active[side] and active[side][line.name] or false,
+      }
+    end
+  end
+  return entries
 end
 
 --- Build the cache of per-side group display lines.
@@ -129,9 +164,9 @@ end
 ---@param index integer
 ---@return string
 function Statusline:icon_highlight(category, is_active, side, index)
-  if not self.opts.colored then return '' end
-  local state = is_active and 'Active' or 'Inactive'
-  return stl_highlight(category .. state, side, index)
+  local group = self:highlight_group(category, is_active, side, index)
+  if not group then return '' end
+  return '%#' .. group .. '#'
 end
 
 --- Build the pick-key segment: highlight + character (only when pick_mode is on).

@@ -12,6 +12,13 @@
 
 ---@alias Placement.RegionKey "left"|"right"|"bottom"
 
+---@alias Placement.Rail.Position "left"|"right"
+
+---@class Placement.Rail
+---@field position Placement.Rail.Position
+---@field size Layout.Size
+---@field slot Placement.Slot
+
 --- A single source/binding descriptor inside a region's `slots`.
 ---@class Placement.Slot
 ---@field winid? integer Source window id (bufnr resolved from it if omitted)
@@ -32,6 +39,7 @@
 ---@field left? Placement.Region
 ---@field right? Placement.Region
 ---@field bottom? Placement.Region
+---@field rail? Placement.Rail Full-height outer edge slot.
 ---@field center? boolean Keep a center/editor slot (default `true`)
 
 local Spec = {
@@ -70,6 +78,7 @@ function Spec.normalize_spec(spec)
   label_region(spec.left, 'L')
   label_region(spec.right, 'R')
   label_region(spec.bottom, 'B')
+  if spec.rail then spec.rail.slot.label = 'Q' end
   return spec
 end
 
