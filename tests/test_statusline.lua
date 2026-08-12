@@ -21,7 +21,7 @@ describe('shared.ui', function()
 
   after_each(function()
     -- clean up highlight groups so they don't leak into other tests
-    for _, cat in ipairs({ 'Active', 'Inactive', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }) do
+    for _, cat in ipairs({ 'Active', 'Inactive', 'Hover', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }) do
       pcall(vim.api.nvim_set_hl, 0, 'Layout' .. cat, {})
       for _, pos in ipairs({ 'Left', 'Right', 'Bottom' }) do
         pcall(vim.api.nvim_set_hl, 0, 'Layout' .. cat .. pos, {})
@@ -53,6 +53,7 @@ describe('shared.ui', function()
     local colors = {
       active = 'Pmenu',
       inactive = 'Pmenu',
+      hover = 'Pmenu',
       pick_active = 'Pmenu',
       pick_inactive = 'Pmenu',
       separator_active = 'Pmenu',
@@ -81,6 +82,22 @@ describe('shared.ui', function()
     expect.equality(hl2.link, 'LayoutActiveLeft')
   end)
 
+  it('creates per-entry hover groups linked to the configured hover color', function()
+    -- Given: a custom hover color and one left-side group
+    local colors = {
+      active = 'Normal', inactive = 'Comment', hover = 'Visual',
+      pick_active = 'PmenuSel', pick_inactive = 'PmenuSel',
+      separator_active = 'Normal', separator_inactive = 'Comment',
+    }
+
+    -- When: statusline highlights are created
+    ui.setup_statusline_highlights({ left = 1, right = 0, bottom = 0 }, colors)
+
+    -- Then: the indexed hover group follows the hover hierarchy
+    expect.equality(vim.api.nvim_get_hl(0, { name = 'LayoutHover', link = true }).link, 'Visual')
+    expect.equality(vim.api.nvim_get_hl(0, { name = 'LayoutHoverLeft1', link = true }).link, 'LayoutHoverLeft')
+  end)
+
   it('creates groups for multiple sides', function()
     local colors = {
       active = 'Pmenu',
@@ -100,10 +117,11 @@ describe('shared.ui', function()
     expect.equality(bottom_hl.link, 'LayoutPickActiveBottom')
   end)
 
-  it('creates all six category base groups', function()
+  it('creates all seven category base groups', function()
     local colors = {
       active = 'Pmenu',
       inactive = 'Pmenu',
+      hover = 'Pmenu',
       pick_active = 'Pmenu',
       pick_inactive = 'Pmenu',
       separator_active = 'Pmenu',
@@ -111,7 +129,7 @@ describe('shared.ui', function()
     }
     ui.setup_statusline_highlights({ left = 0, right = 0, bottom = 0 }, colors)
 
-    for _, cat in ipairs({ 'Active', 'Inactive', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }) do
+    for _, cat in ipairs({ 'Active', 'Inactive', 'Hover', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }) do
       local hl = vim.api.nvim_get_hl(0, { name = 'Layout' .. cat, link = true })
       expect.equality(hl.link, 'Pmenu')
     end

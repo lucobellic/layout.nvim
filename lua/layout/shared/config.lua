@@ -51,6 +51,7 @@
 ---@class Layout.Statusline.Colors
 ---@field active string Link target for LayoutActive highlight group
 ---@field inactive string Link target for LayoutInactive highlight group
+---@field hover string Link target for LayoutHover highlight group
 ---@field pick_active string Link target for LayoutPickActive highlight group
 ---@field pick_inactive string Link target for LayoutPickInactive highlight group
 ---@field separator_active string Link target for LayoutSeparatorActive highlight group
@@ -66,6 +67,7 @@
 
 ---@class Layout.Statusline.Rail.Opts
 ---@field enabled boolean Show all configured group icons in a fixed-width window.
+---@field hover boolean Highlight rail icons under the mouse pointer.
 ---@field mode Layout.Statusline.Rail.Mode Rail window implementation.
 ---@field position Layout.Statusline.Rail.Position Editor edge occupied by the rail.
 ---@field width integer Fixed rail width in columns.
@@ -151,6 +153,7 @@ local defaults = {
     pick_key_pose = 'right_separator',
     rail = {
       enabled = false,
+      hover = false,
       mode = 'float',
       position = 'left',
       width = 1,
@@ -164,6 +167,7 @@ local defaults = {
     colors = {
       active = 'Normal',
       inactive = 'Comment',
+      hover = 'PmenuSel',
       pick_active = 'PmenuSel',
       pick_inactive = 'PmenuSel',
       separator_active = 'Normal',
@@ -191,6 +195,9 @@ function Config.merge(opts)
   end
   if rail and rail.mode ~= 'float' and rail.mode ~= 'buffer' then
     error('statusline.rail.mode must be "float" or "buffer"')
+  end
+  if rail and type(rail.hover) ~= 'boolean' then
+    error('statusline.rail.hover must be a boolean')
   end
   if rail and (type(rail.width) ~= 'number' or rail.width < 1 or math.floor(rail.width) ~= rail.width) then
     error('statusline.rail.width must be a positive integer')

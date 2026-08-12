@@ -59,6 +59,16 @@ function Statusline:highlight_group(category, is_active, side, index)
   return 'Layout' .. category .. state .. capitalize(side) .. index
 end
 
+---Return the configured hover highlight for a group entry.
+---@public
+---@param side Layout.Side
+---@param index integer
+---@return string?
+function Statusline:hover_highlight(side, index)
+  if not self.opts.colored then return nil end
+  return 'LayoutHover' .. capitalize(side) .. index
+end
+
 --- Scan all tabpage windows and classify them to build an active-map
 ---{ [side] = { [group_name] = true } }.
 ---@private

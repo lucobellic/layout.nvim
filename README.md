@@ -10,8 +10,12 @@ It can either float over the editor or reserve a normal buffer window:
 ```lua
 require('layout').setup({
   statusline = {
+    colors = {
+      hover = 'PmenuSel', -- highlight linked by hovered rail icons
+    },
     rail = {
       enabled = true,
+      hover = true, -- opt in to mouse hover highlighting
       mode = 'float', -- "float" (default) or "buffer"
       position = 'left', -- "left" or "right"
       width = 1, -- positive integer number of columns

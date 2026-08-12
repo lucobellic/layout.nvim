@@ -16,6 +16,8 @@ local Statusline = require('layout.features.statusline')
 ---@field state table<integer, Layout.Feature.Rail.State> Rail state keyed by tabpage.
 ---@field last_win table<integer, integer> Last non-rail window keyed by tabpage.
 ---@field mouse_mapping boolean Whether the global mouse interceptor is installed.
+---@field mousemove_ns integer? Namespace used to observe mouse movement.
+---@field hover_line table<integer, integer> Hovered entry line keyed by tabpage.
 local Rail = {
   opts = nil,
   clickable = true,
@@ -24,11 +26,15 @@ local Rail = {
   state = {},
   last_win = {},
   mouse_mapping = false,
+  mousemove_ns = nil,
+  hover_line = {},
 }
 
 ---@param entry Layout.Statusline.Entry
+---@param hovered? boolean
 ---@return string?
-local function highlight(entry)
+local function highlight(entry, hovered)
+  if hovered then return Statusline:hover_highlight(entry.side, entry.index) end
   local category = Statusline.pick_mode and 'Pick' or ''
   return Statusline:highlight_group(category, entry.active, entry.side, entry.index)
 end
@@ -48,6 +54,7 @@ local function close_state(tabpage)
   if vim.api.nvim_win_is_valid(state.winid) then pcall(vim.api.nvim_win_close, state.winid, true) end
   if vim.api.nvim_buf_is_valid(state.bufnr) then pcall(vim.api.nvim_buf_delete, state.bufnr, { force = true }) end
   Rail.state[tabpage] = nil
+  Rail.hover_line[tabpage] = nil
 end
 
 ---@return nil
@@ -96,6 +103,18 @@ local function ensure_mouse_mapping()
     replace_keycodes = true,
     desc = 'Dispatch clicks on the layout rail',
   })
+end
+
+---@return nil
+local function ensure_mousemove_listener()
+  if Rail.mousemove_ns then return end
+  Rail.mousemove_ns = vim.api.nvim_create_namespace('LayoutRailMouseMove')
+  vim.on_key(function(key)
+    if key ~= vim.keycode('<MouseMove>') then return end
+    vim.schedule(function()
+      Rail:update_hover(vim.fn.getmousepos())
+    end)
+  end, Rail.mousemove_ns)
 end
 
 ---@return vim.api.keyset.win_config
@@ -241,9 +260,23 @@ function Rail:render()
   vim.bo[state.bufnr].modifiable = false
   vim.api.nvim_buf_clear_namespace(state.bufnr, -1, 0, -1)
   for index, entry in pairs(state.entries) do
-    local group = highlight(entry)
+    local group = highlight(entry, self.hover_line[tabpage] == index)
     if group then vim.api.nvim_buf_add_highlight(state.bufnr, -1, group, index - 1, 0, -1) end
   end
+end
+
+---Update the highlighted rail entry from a mouse position.
+---@public
+---@param mouse { winid: integer, line: integer }
+---@return nil
+function Rail:update_hover(mouse)
+  if not self.opts or not self.opts.enabled or not self.opts.hover then return end
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local state = self.state[tabpage]
+  local line = state and mouse.winid == state.winid and state.entries[mouse.line] and mouse.line or nil
+  if self.hover_line[tabpage] == line then return end
+  self.hover_line[tabpage] = line
+  if state and vim.api.nvim_win_is_valid(state.winid) then self:render() end
 end
 
 ---Reposition and redraw the active tabpage rail.
@@ -317,6 +350,8 @@ function Rail:setup(opts, clickable)
   self.setup_generation = self.setup_generation + 1
   self.last_win = {}
   ensure_mouse_mapping()
+  ensure_mousemove_listener()
+  if opts.enabled and opts.hover then vim.o.mousemoveevent = true end
   local generation = self.setup_generation
 
   if self.augroup then pcall(vim.api.nvim_del_augroup_by_id, self.augroup) end

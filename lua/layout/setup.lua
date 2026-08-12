@@ -49,7 +49,7 @@ function M.setup(opts)
     Ui:setup(counts, resolved.statusline.colors)
     Rail:setup(resolved.statusline.rail, resolved.statusline.clickable)
   else
-    Rail:setup({ enabled = false, mode = 'float', position = 'left', width = 1, padding = 0, groups = {} }, false)
+    Rail:setup({ enabled = false, hover = false, mode = 'float', position = 'left', width = 1, padding = 0, groups = {} }, false)
   end
 
   Autocmds:setup(registry, resolved)

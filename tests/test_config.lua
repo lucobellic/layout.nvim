@@ -111,6 +111,7 @@ describe('config.normalize', function()
 
       -- When: the configurations are validated
       local mode_ok = pcall(config.merge, { statusline = { rail = { mode = 'invalid' } } })
+      local hover_ok = pcall(config.merge, { statusline = { rail = { hover = 'yes' } } })
       local width_ok = pcall(config.merge, { statusline = { rail = { width = 1.5 } } })
       local padding_ok = pcall(config.merge, { statusline = { rail = { width = 2, padding = 2 } } })
 
@@ -118,7 +119,10 @@ describe('config.normalize', function()
       expect.equality(merged.statusline.rail.mode, 'float')
       expect.equality(merged.statusline.rail.width, 1)
       expect.equality(merged.statusline.rail.padding, 0)
+      expect.equality(merged.statusline.rail.hover, false)
+      expect.equality(merged.statusline.colors.hover, 'PmenuSel')
       expect.equality(mode_ok, false)
+      expect.equality(hover_ok, false)
       expect.equality(width_ok, false)
       expect.equality(padding_ok, false)
     end)

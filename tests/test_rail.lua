@@ -449,6 +449,66 @@ describe('buffer icon rail', function()
     expect.equality(child.api.nvim_win_get_cursor(editor)[1], 2)
   end)
 
+  it('highlights an icon while hovered and restores it when the mouse leaves', function()
+    -- Given: a buffer rail with one inactive icon and mouse movement reporting
+    local cfg = U.test_config({
+      left = { groups = { explorer = {
+        picker = { icon = 'E', key = 'e' },
+        views = { filesystem = { filter = 'leftft', open = 'belowright split' } },
+      } } },
+    })
+    cfg.statusline = {
+      rail = { enabled = true, hover = true, mode = 'buffer', position = 'left', groups = { top = 'left' } },
+    }
+    child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
+    wait_for_rail()
+    local rail = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]]=])
+
+    -- When: the mouse moves over the first icon
+    child.lua([[
+      local rail = require('layout.features.rail')
+      rail:update_hover({ winid = rail.state[vim.api.nvim_get_current_tabpage()].winid, line = 1 })
+    ]])
+
+    -- Then: the icon uses its indexed hover highlight without taking focus
+    local hovered = child.api.nvim_buf_get_extmarks(rail.bufnr, -1, 0, -1, { details = true })
+    expect.equality(hovered[1][4].hl_group, 'LayoutHoverLeft1')
+    expect.equality(child.api.nvim_get_current_win() ~= rail.winid, true)
+
+    -- When: the mouse leaves the rail
+    child.lua([[require('layout.features.rail'):update_hover({ winid = 0, line = 0 })]])
+
+    -- Then: the icon returns to its inactive highlight
+    local restored = child.api.nvim_buf_get_extmarks(rail.bufnr, -1, 0, -1, { details = true })
+    expect.equality(restored[1][4].hl_group, 'LayoutInactiveLeft1')
+  end)
+
+  it('does not enable or apply hover behavior by default', function()
+    -- Given: a rail without the opt-in hover option
+    local cfg = U.test_config({ left = { groups = {} } })
+    cfg.statusline = {
+      rail = { enabled = true, mode = 'buffer', position = 'left', groups = { top = 'left' } },
+    }
+    child.o.mousemoveevent = false
+
+    -- When: the rail is set up and receives a synthetic hover update
+    child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
+    wait_for_rail()
+    local rail = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]]=])
+    child.lua([[
+      local rail = require('layout.features.rail')
+      rail:update_hover({ winid = rail.state[vim.api.nvim_get_current_tabpage()].winid, line = 1 })
+    ]])
+
+    -- Then: mouse movement reporting and hover state remain disabled
+    expect.equality(child.o.mousemoveevent, false)
+    local hover_enabled = child.lua_get([=[
+      require('layout.features.rail').hover_line[vim.api.nvim_get_current_tabpage()] ~= nil
+    ]=])
+    expect.equality(hover_enabled, false)
+    expect.equality(child.api.nvim_win_is_valid(rail.winid), true)
+  end)
+
   it('recreates the reserved edge window after it is manually closed', function()
     -- Given: an empty left buffer rail
     local cfg = U.test_config({ left = { groups = {} } })
