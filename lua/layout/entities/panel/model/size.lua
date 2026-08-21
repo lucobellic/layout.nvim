@@ -30,6 +30,7 @@ local Size = {
 }
 
 local SharedSize = require('layout.shared.size')
+local Windows = require('layout.shared.windows')
 
 ---@param tabpage? integer
 ---@return integer
@@ -52,30 +53,6 @@ local function runtime_for(tabpage)
     }
   end
   return Size.runtime[id]
-end
-
----Return the non-floating window set for a tabpage.
----@param tabpage? integer
----@return table<integer, boolean>
-local function current_window_set(tabpage)
-  local windows = {}
-  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tab_id(tabpage))) do
-    if vim.api.nvim_win_get_config(winid).relative == '' then windows[winid] = true end
-  end
-  return windows
-end
-
----@param left table<integer, boolean>
----@param right table<integer, boolean>
----@return boolean
-local function same_window_set(left, right)
-  for win in pairs(left) do
-    if not right[win] then return false end
-  end
-  for win in pairs(right) do
-    if not left[win] then return false end
-  end
-  return true
 end
 
 ---@param win integer
@@ -137,7 +114,7 @@ end
 ---@return boolean
 local function topology_is_stable(runtime, tabpage)
   if not runtime.placed_windows then return false end
-  local stable = same_window_set(current_window_set(tabpage), runtime.placed_windows)
+  local stable = Windows.same_set(Windows.normal_set(tab_id(tabpage)), runtime.placed_windows)
   runtime.topology_dirty = not stable
   return stable and not runtime.capture_invalid
 end
@@ -207,7 +184,7 @@ function Size:initialize_tab(tabpage)
   if runtime.placed_windows then return end
   local wins = vim.api.nvim_tabpage_list_wins(tab_id(tabpage))
   runtime.applied = panel_dimensions(wins)
-  runtime.placed_windows = current_window_set(tabpage)
+  runtime.placed_windows = Windows.normal_set(tab_id(tabpage))
 end
 
 ---Capture current managed dimensions only when topology is stable.
@@ -254,7 +231,7 @@ end
 function Size:commit_live()
   local runtime = runtime_for()
   runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
-  runtime.placed_windows = current_window_set()
+  runtime.placed_windows = Windows.normal_set()
   runtime.topology_dirty = false
   runtime.editor_resized = false
   runtime.capture_invalid = false
@@ -266,7 +243,7 @@ end
 function Size:settle_topology()
   local runtime = runtime_for()
   runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
-  runtime.placed_windows = current_window_set()
+  runtime.placed_windows = Windows.normal_set()
   runtime.topology_dirty = false
   runtime.editor_resized = false
   runtime.capture_invalid = false
@@ -303,7 +280,7 @@ end
 function Size:topology_changed()
   local runtime = runtime_for()
   if runtime.placed_windows then
-    runtime.topology_dirty = not same_window_set(current_window_set(), runtime.placed_windows)
+    runtime.topology_dirty = not Windows.same_set(Windows.normal_set(), runtime.placed_windows)
   end
   return runtime.topology_dirty or runtime.capture_invalid
 end

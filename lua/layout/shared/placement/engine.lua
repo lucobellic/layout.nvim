@@ -7,6 +7,7 @@
 local Shape = require('layout.shared.placement.shape')
 local Size = require('layout.shared.size')
 local Spec = require('layout.shared.placement.spec')
+local Constants = require('layout.shared.constants')
 
 ---@class Placement.Engine
 local Engine = {}
@@ -32,7 +33,7 @@ end
 ---@return table<integer, boolean>
 local function source_windows(spec)
   local sources = {}
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(key)
+  vim.iter(Constants.sides):each(function(key)
     vim.iter(Spec.region_slots(spec[key])):each(function(slot)
       if normal(slot.winid) then
         if sources[slot.winid] then
@@ -96,7 +97,7 @@ end
 ---@return Placement.WindowMap
 local function window_map(spec, center)
   local windows = { C = center }
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(key)
+  vim.iter(Constants.sides):each(function(key)
     vim.iter(Spec.region_slots(spec[key])):each(function(slot)
       windows[slot.label] = slot.winid
     end)

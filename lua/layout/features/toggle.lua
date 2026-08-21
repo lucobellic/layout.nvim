@@ -78,11 +78,8 @@ local function arrange_now(expected, presumed)
   local function converged()
     if not expected then return true end
     local found = {}
-    for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      if vim.api.nvim_win_is_valid(winid) then
-        local _, _, vname = View:match_by_buf(vim.api.nvim_win_get_buf(winid), winid)
-        if vname and expected[vname] then found[vname] = true end
-      end
+    for match in View:iter_matches() do
+      if expected[match.name] then found[match.name] = true end
     end
     for name in pairs(expected) do
       if not found[name] then return false end
@@ -106,15 +103,10 @@ end
 ---@param group_name string
 ---@return boolean closed_any
 local function close_wins(side, group_name)
-  local wins = vim.api.nvim_tabpage_list_wins(0)
-  return vim.iter(wins):fold(false, function(closed, winid)
-    if vim.api.nvim_win_is_valid(winid) then
-      local bufnr = vim.api.nvim_win_get_buf(winid)
-      local ms, mg = View:match_by_buf(bufnr, winid)
-      if ms == side and mg == group_name then
-        pcall(vim.api.nvim_win_close, winid, true)
-        closed = true
-      end
+  return vim.iter(View:iter_matches()):fold(false, function(closed, match)
+    if match.side == side and match.group == group_name then
+      local ok = pcall(vim.api.nvim_win_close, match.winid, true)
+      closed = closed or ok
     end
     return closed
   end)

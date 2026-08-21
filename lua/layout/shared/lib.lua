@@ -21,7 +21,8 @@ end
 ---@return Layout.Side?
 function Lib.win_side(winid, bufnr)
   bufnr = bufnr or vim.api.nvim_win_get_buf(winid)
-  local ok, side = pcall(require('layout.entities.view').match_by_buf, bufnr)
+  local View = require('layout.entities.view')
+  local ok, side = pcall(View.match_by_buf, View, bufnr, winid)
   if ok and side then
     return side
   end

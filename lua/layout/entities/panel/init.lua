@@ -27,6 +27,7 @@ local placement = require('layout.shared.placement')
 local size_model = require('layout.entities.panel.model.size')
 local view_entity = require('layout.entities.view')
 local view_state = require('layout.shared.view_state')
+local Constants = require('layout.shared.constants')
 
 ---@class Layout.Entity.Panel
 ---@field registry Layout.Registry? Registry reference for the current tabpage, set via `set_registry`.
@@ -167,7 +168,7 @@ local function arrange(registry, presumed)
     end
   end)
 
-  local has_slots = vim.iter({ 'left', 'right', 'bottom' }):any(function(side)
+  local has_slots = vim.iter(Constants.sides):any(function(side)
     return #raw[side] > 0
   end)
   local rail = Panel.rail and Panel.rail:placement_spec() or nil
@@ -175,7 +176,7 @@ local function arrange(registry, presumed)
 
   ---@type table<Layout.Side, { group: table<string, integer>, view: table<string, integer> }>
   local order_maps = {}
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+  vim.iter(Constants.sides):each(function(side)
     local se = registry[side]
     if se and se._order then
       local group_map = {}
@@ -197,14 +198,14 @@ local function arrange(registry, presumed)
 
   ---@type table<Layout.Side, Placement.Slot[]>
   local side_slots = {}
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+  vim.iter(Constants.sides):each(function(side)
     side_slots[side] = finalize_side_slots(side, raw[side], order_maps[side] or { group = {}, view = {} })
   end)
 
   ---@type Placement.Spec
   local spec = { center = true }
   spec.rail = rail
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+  vim.iter(Constants.sides):each(function(side)
     local se = registry[side]
     if se and #side_slots[side] > 0 then
       spec[side] = {
@@ -217,7 +218,7 @@ local function arrange(registry, presumed)
 
   placement.place(spec)
 
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+  vim.iter(Constants.sides):each(function(side)
     for _, slot in ipairs(side_slots[side]) do
       if slot._key and vim.api.nvim_win_is_valid(slot.winid) then
         pcall(vim.api.nvim_win_set_var, slot.winid, 'layout_view_key', slot._key)

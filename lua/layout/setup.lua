@@ -17,6 +17,7 @@ local Statusline = require('layout.features.statusline')
 local Ui = require('layout.shared.ui')
 local View = require('layout.entities.view')
 local ViewState = require('layout.shared.view_state')
+local Constants = require('layout.shared.constants')
 
 ---@public
 ---@param opts? table
@@ -43,7 +44,7 @@ function M.setup(opts)
   if resolved.statusline then
     Statusline:setup(registry, resolved.statusline)
     local counts = {}
-    for _, side in ipairs({ 'left', 'right', 'bottom' }) do
+    for _, side in ipairs(Constants.sides) do
       counts[side] = #Group:list(side)
     end
     Ui:setup(counts, resolved.statusline.colors)

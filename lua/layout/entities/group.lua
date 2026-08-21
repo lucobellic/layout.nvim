@@ -17,6 +17,8 @@ local Group = {
   registry = nil,
 }
 
+local Constants = require('layout.shared.constants')
+
 --- Clear the registry.
 ---@package
 function Group:clear()
@@ -31,7 +33,7 @@ end
 function Group:register(registry)
   self:clear()
   self.registry = registry
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+  vim.iter(Constants.sides):each(function(side)
     local se = registry[side]
     if se and se.groups and se._order then
       self.group_order[side] = {}
@@ -101,7 +103,7 @@ end
 ---@public
 ---@return fun(): Layout.Side?, string?, Layout.Entity.Group.Desc?
 function Group:iter()
-  local sides = { 'left', 'right', 'bottom' }
+  local sides = Constants.sides
   local si = 0
   local keys = nil
   local ki = 0

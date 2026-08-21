@@ -16,30 +16,7 @@ local ViewState = {
   augroup = nil,
 }
 
----@private
----@param tabpage integer
----@return table<integer, boolean>
-local function normal_windows(tabpage)
-  local windows = {}
-  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do
-    if vim.api.nvim_win_get_config(winid).relative == '' then windows[winid] = true end
-  end
-  return windows
-end
-
----@private
----@param left table<integer, boolean>
----@param right table<integer, boolean>
----@return boolean
-local function same_windows(left, right)
-  for winid in pairs(left) do
-    if not right[winid] then return false end
-  end
-  for winid in pairs(right) do
-    if not left[winid] then return false end
-  end
-  return true
-end
+local Windows = require('layout.shared.windows')
 
 ---@private
 ---@param winid integer
@@ -67,7 +44,7 @@ end
 ---@return table<integer, Layout.Shared.ViewState.View>
 local function capture_views(tabpage)
   local views = {}
-  for winid in pairs(normal_windows(tabpage)) do
+  for winid in pairs(Windows.normal_set(tabpage)) do
     local view = capture_view(winid)
     if view then views[winid] = view end
   end
@@ -79,7 +56,7 @@ end
 ---@return Layout.Shared.ViewState.Session
 function ViewState:initialize(tabpage)
   local session = {
-    windows = normal_windows(tabpage),
+    windows = Windows.normal_set(tabpage),
     views = capture_views(tabpage),
   }
   self.sessions[tabpage] = session
@@ -94,10 +71,10 @@ end
 function ViewState:save(tabpage)
   tabpage = tabpage or vim.api.nvim_get_current_tabpage()
   local session = self.sessions[tabpage]
-  local windows = normal_windows(tabpage)
+  local windows = Windows.normal_set(tabpage)
   if not session then
     session = self:initialize(tabpage)
-  elseif same_windows(session.windows, windows) then
+  elseif Windows.same_set(session.windows, windows) then
     session.windows = windows
     session.views = capture_views(tabpage)
   end
@@ -138,7 +115,7 @@ function ViewState:update(winid)
     self:initialize(tabpage)
     return
   end
-  if not same_windows(session.windows, normal_windows(tabpage)) then return end
+  if not Windows.same_set(session.windows, Windows.normal_set(tabpage)) then return end
   local view = capture_view(winid)
   if view then
     session.views[winid] = view

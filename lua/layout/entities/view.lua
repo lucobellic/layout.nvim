@@ -19,11 +19,21 @@
 ---@field name string
 ---@field view Layout.View.Entry
 
+---@class Layout.Entity.View.Match
+---@field winid integer
+---@field bufnr integer
+---@field side Layout.Side
+---@field group string
+---@field name string
+---@field view Layout.View.Entry
+
 ---@class Layout.Entity.View
 ---@field entries Layout.Entity.View.Entry[]
 local View = {
   entries = {},
 }
+
+local Constants = require('layout.shared.constants')
 
 --- Return whether a buffer has opted out of layout management.
 ---@private
@@ -59,7 +69,7 @@ end
 ---@param registry Layout.Registry
 function View:register(registry)
   self:clear()
-  vim.iter({ 'left', 'right', 'bottom' }):each(function(side)
+  vim.iter(Constants.sides):each(function(side)
     local se = registry[side]
     if se and se.groups and se._order then
       for _, gname in ipairs(se._order) do
@@ -98,6 +108,34 @@ function View:match_by_buf(bufnr, winid)
   end)
   if not entry then return nil end
   return entry.side, entry.group, entry.name, entry.view
+end
+
+---Iterate matching windows in a tabpage snapshot.
+---@public
+---@param tabpage? integer
+---@param normal_only? boolean
+---@return fun(): Layout.Entity.View.Match?
+function View:iter_matches(tabpage, normal_only)
+  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+  local wins = vim.api.nvim_tabpage_list_wins(tabpage)
+  local index = 0
+  return function()
+    while true do
+      index = index + 1
+      local winid = wins[index]
+      if not winid then return nil end
+      if
+        vim.api.nvim_win_is_valid(winid)
+        and (not normal_only or vim.api.nvim_win_get_config(winid).relative == '')
+      then
+        local bufnr = vim.api.nvim_win_get_buf(winid)
+        local side, group, name, view = self:match_by_buf(bufnr, winid)
+        if side and group and name and view then
+          return { winid = winid, bufnr = bufnr, side = side, group = group, name = name, view = view }
+        end
+      end
+    end
+  end
 end
 
 --- Iterate all registered entries.
