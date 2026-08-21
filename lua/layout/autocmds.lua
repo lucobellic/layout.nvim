@@ -17,6 +17,7 @@ local View = require('layout.entities.view')
 ---@field resize_generation integer
 ---@field resize_active boolean
 ---@field pending_arrange boolean
+---@field pending_save boolean
 
 ---@class Layout.Autocmds
 ---@field private registry Layout.Registry?
@@ -48,6 +49,7 @@ local function session_for(tabpage)
       resize_generation = 0,
       resize_active = false,
       pending_arrange = false,
+      pending_save = false,
     }
   end
   return Autocmds.sessions[id]
@@ -86,6 +88,10 @@ local function run_pending_arrange(tabpage)
   if not ok then
     session.pending_arrange = true
     error(err)
+  end
+  if session.pending_save and Autocmds.config and Autocmds.config.workspaces and Autocmds.config.workspaces.auto_save then
+    Save.save(Autocmds.config)
+    session.pending_save = false
   end
 end
 
@@ -196,7 +202,8 @@ function Autocmds:wire()
   for _, event in ipairs(self:events_from_config()) do
     vim.api.nvim_create_autocmd(event, {
       group = self.augroup,
-      callback = function()
+      callback = function(ev)
+        if View:match_by_buf(ev.buf, vim.api.nvim_get_current_win()) then session_for().pending_save = true end
         self:schedule_arrange()
       end,
     })
@@ -208,34 +215,49 @@ function Autocmds:wire()
     callback = function(ev)
       if not self.registry then return end
       local side = View:match_by_buf(ev.buf, vim.api.nvim_get_current_win())
-      if side then self:schedule_arrange(0, true) end
+      if side then
+        session_for().pending_save = true
+        self:schedule_arrange(0, true)
+      end
     end,
   })
 
   vim.api.nvim_create_autocmd('WinClosed', {
     group = self.augroup,
     callback = function()
+      session_for().pending_save = true
       Size:mark_topology_changed()
       self:schedule_arrange(0)
-      if self.config then Save.save(self.config) end
     end,
   })
 
   vim.api.nvim_create_autocmd('WinNew', {
     group = self.augroup,
     callback = function()
+      session_for().pending_save = true
       Size:mark_topology_changed()
       self:schedule_arrange(0)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('DirChangedPre', {
+    group = self.augroup,
+    callback = function()
+      if self.config and self.config.workspaces and self.config.workspaces.auto_save then Save.save(self.config) end
     end,
   })
 
   vim.api.nvim_create_autocmd('DirChanged', {
     group = self.augroup,
     callback = function()
-      if self.config and self.config.workspaces then
-        if self.config.workspaces.auto_restore then Restore.restore(self.config) end
-        if self.config.workspaces.auto_save then Save.save(self.config) end
-      end
+      if self.config and self.config.workspaces and self.config.workspaces.auto_restore then Restore.restore(self.config) end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('VimLeavePre', {
+    group = self.augroup,
+    callback = function()
+      if self.config and self.config.workspaces and self.config.workspaces.auto_save then Save.save(self.config) end
     end,
   })
 

@@ -10,9 +10,10 @@ local Store = {}
 --- Resolve the file path for a given cwd and config.
 ---@private
 ---@param config Layout.Config
----@param cwd string
+---@param cwd? string
 ---@return string
 local function filepath(config, cwd)
+  cwd = cwd or vim.fn.getcwd()
   local dir = config.workspaces and config.workspaces.dir or vim.fn.stdpath('data') .. '/layout'
   return dir .. '/' .. lib.cwd_hash(cwd) .. '.json'
 end
@@ -21,8 +22,9 @@ end
 ---@public
 ---@param config Layout.Config
 ---@param state table
-function Store.save(config, state)
-  local cwd = vim.fn.getcwd()
+---@param cwd? string
+function Store.save(config, state, cwd)
+  cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
   local dir = vim.fn.fnamemodify(path, ':h')
   if vim.fn.isdirectory(dir) == 0 then
@@ -38,9 +40,10 @@ end
 --- Load workspace state from disk.
 ---@public
 ---@param config Layout.Config
+---@param cwd? string
 ---@return table?
-function Store.load(config)
-  local cwd = vim.fn.getcwd()
+function Store.load(config, cwd)
+  cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
   if vim.fn.filereadable(path) == 0 then
     return nil
@@ -59,8 +62,9 @@ end
 --- Delete the saved workspace for the current cwd.
 ---@public
 ---@param config Layout.Config
-function Store.forget(config)
-  local cwd = vim.fn.getcwd()
+---@param cwd? string
+function Store.forget(config, cwd)
+  cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
   if vim.fn.filereadable(path) == 1 then
     os.remove(path)

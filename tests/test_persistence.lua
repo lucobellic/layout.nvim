@@ -34,6 +34,21 @@ describe("shared.lib", function()
       expect.equality(string.match(h, "^[0-9a-f]+$") ~= nil, true)
     end)
   end)
+
+  it("classifies a matching managed window", function()
+    -- Given: a registered view matching the current buffer
+    local View = require("layout.entities.view")
+    View.entries = {
+      { side = "left", group = "tools", name = "custom", view = { filter = function() return true end } },
+    }
+
+    -- When: the shared window helper classifies the current window
+    local side = lib.win_side(vim.api.nvim_get_current_win())
+    View:clear()
+
+    -- Then: it forwards both receiver and window context to the view registry
+    expect.equality(side, "left")
+  end)
 end)
 
 --------------------------------------------------------------------------------
@@ -163,7 +178,56 @@ describe("features.save", function()
     ]])
 
     local state = child.lua_get([[_G._snapshot]])
-    expect.equality(state.sides.left.explorer[1], "toolL")
+    expect.equality(state.sides.left.explorer.filesystem, true)
+  end)
+
+  it("persists function-filtered views even when their filetype is empty", function()
+    -- Given: a view matched by custom state rather than filetype
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          explorer = {
+            views = {
+              filesystem = {
+                filter = function(buf)
+                  return vim.b[buf].is_custom_tool == true
+                end,
+              },
+            },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.lua([[vim.b.is_custom_tool = true]])
+
+    -- When: the workspace is saved
+    child.lua([[
+      require("layout.features.save").save(_G.TEST_CFG)
+      _G._snapshot = require("layout.shared.store").load(_G.TEST_CFG)
+    ]])
+
+    -- Then: the configured view identity is present despite the empty filetype
+    expect.equality(child.lua_get([[_G._snapshot.sides.left.explorer.filesystem]]), true)
+  end)
+
+  it("saves explicitly when automatic saving is disabled", function()
+    -- Given: automatic persistence is disabled and a matching view is open
+    local cfg = U.test_config({
+      left = { groups = { explorer = { views = { filesystem = { filter = "toolL" } } } } },
+    })
+    U.setup_config(child, cfg)
+    U.make_tool_win(child, "toolL")
+    child.lua([[_G.TEST_CFG.workspaces.auto_save = false]])
+
+    -- When: save is invoked explicitly
+    child.lua([[
+      require("layout.features.save").save(_G.TEST_CFG)
+      _G._snapshot = require("layout.shared.store").load(_G.TEST_CFG)
+    ]])
+
+    -- Then: a workspace is still written
+    expect.equality(child.lua_get([[_G._snapshot.sides.left.explorer.filesystem]]), true)
   end)
 end)
 
@@ -228,5 +292,32 @@ describe("features.restore", function()
 
     local after = #child.api.nvim_tabpage_list_wins(0)
     expect.equality(after, before + 1)
+  end)
+
+  it("restores explicitly when automatic restoration is disabled", function()
+    -- Given: a saved group and automatic restoration disabled
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          explorer = {
+            views = { filesystem = { filter = "toolL", open = "belowright split" } },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.lua([[
+      _G.TEST_CFG.workspaces.auto_restore = false
+      require("layout.shared.store").save(_G.TEST_CFG, {
+        sides = { left = { explorer = { filesystem = true } } },
+      })
+    ]])
+    local before = #child.api.nvim_tabpage_list_wins(0)
+
+    -- When: restore is invoked explicitly
+    child.lua([[require("layout.features.restore").restore(_G.TEST_CFG)]])
+
+    -- Then: the group is opened
+    expect.equality(#child.api.nvim_tabpage_list_wins(0), before + 1)
   end)
 end)
