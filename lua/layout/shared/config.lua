@@ -182,6 +182,13 @@ local Config = {
 }
 
 local Size = require('layout.shared.size')
+local Constants = require('layout.shared.constants')
+
+---@type table<string, boolean>
+local VALID_ALIGNMENTS = { contained = true, left_aligned = true, right_aligned = true, full = true }
+
+---@type table<string, boolean>
+local VALID_PICK_POSES = { left = true, right = true, left_separator = true, right_separator = true, icon = true }
 
 --- Merge user opts with defaults and return a resolved `Layout.Config`.
 ---@public
@@ -189,6 +196,12 @@ local Size = require('layout.shared.size')
 ---@return Layout.Config
 function Config.merge(opts)
   local merged = vim.tbl_deep_extend('force', defaults, opts or {})
+  if merged.bottom and merged.bottom.align and not VALID_ALIGNMENTS[merged.bottom.align] then
+    error('bottom.align must be "contained", "left_aligned", "right_aligned", or "full"')
+  end
+  if merged.statusline and not VALID_PICK_POSES[merged.statusline.pick_key_pose] then
+    error('statusline.pick_key_pose must be "left", "right", "left_separator", "right_separator", or "icon"')
+  end
   local rail = merged.statusline and merged.statusline.rail
   if rail and rail.position ~= 'left' and rail.position ~= 'right' then
     error('statusline.rail.position must be "left" or "right"')
@@ -246,7 +259,7 @@ function Config.normalize(config)
     return {}
   end
 
-  return vim.iter({ 'left', 'right', 'bottom' }):fold({}, function(reg, side)
+  return vim.iter(Constants.sides):fold({}, function(reg, side)
     local sc = config[side]
     if not sc then return reg end
 
@@ -257,6 +270,9 @@ function Config.normalize(config)
 
     for _, g in ipairs(groups_from(sc)) do
       if g.name then
+        if side_entry.groups[g.name] then
+          error(('%s contains duplicate group name %q'):format(side, g.name))
+        end
         local pk = g.picker or {}
         ---@type Layout.Group.Entry
         local group_entry = {
@@ -271,6 +287,9 @@ function Config.normalize(config)
         if g.views and type(g.views) == 'table' and g.views[1] ~= nil then
           for _, vw in ipairs(g.views) do
             if vw.name and vw.filter ~= nil then
+              if group_entry.views[vw.name] then
+                error(('%s.%s contains duplicate view name %q'):format(side, g.name, vw.name))
+              end
               if vw.size ~= nil then Size.validate(vw.size, side .. '.' .. g.name .. '.' .. vw.name .. '.size') end
               group_entry.views[vw.name] = vw
               group_entry._order[#group_entry._order + 1] = vw.name

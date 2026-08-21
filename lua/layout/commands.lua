@@ -8,6 +8,7 @@ local Restore = require('layout.features.restore')
 local Save = require('layout.features.save')
 local Store = require('layout.shared.store')
 local Toggle = require('layout.features.toggle')
+local Constants = require('layout.shared.constants')
 
 ---@class Layout.Commands
 ---@field private config Layout.Config?
@@ -20,17 +21,23 @@ local SUBCOMMANDS = { 'toggle', 'close', 'pick', 'save', 'restore', 'forget' }
 
 ---@type table<string, string[]>
 local SUBCOMPLETION = {
-  close = { 'left', 'right', 'bottom' },
+  close = Constants.sides,
 }
 
---- Resolve a group name to its side, or nil.
+--- Resolve a unique group name to its side.
 ---@private
 ---@param group_name string
 ---@return Layout.Side?
+---@return boolean ambiguous
 local function resolve_group_side(group_name)
-  return vim.iter({ 'left', 'right', 'bottom' }):find(function(candidate)
-    return Group:get(candidate, group_name) ~= nil
-  end)
+  local found = nil
+  for _, candidate in ipairs(Constants.sides) do
+    if Group:get(candidate, group_name) ~= nil then
+      if found then return nil, true end
+      found = candidate
+    end
+  end
+  return found, false
 end
 
 --- Collect all known group names.
@@ -55,21 +62,30 @@ function Commands:setup(config)
     local sub = fargs[1]
 
     if sub == 'toggle' then
-      local group_name = fargs[2]
+      local requested_side = fargs[3] and fargs[2] or nil
+      local group_name = fargs[3] or fargs[2]
       if not group_name then
-        vim.notify('[layout.nvim] Usage: Layout toggle <group>', vim.log.levels.WARN)
+        vim.notify('[layout.nvim] Usage: Layout toggle [side] <group>', vim.log.levels.WARN)
         return
       end
-      local side = resolve_group_side(group_name)
+      local side, ambiguous
+      if requested_side then
+        side = Group:get(requested_side, group_name) and requested_side or nil
+      else
+        side, ambiguous = resolve_group_side(group_name)
+      end
       if side then
         Toggle.toggle_group(side, group_name)
+        return
+      end
+      if ambiguous then
+        vim.notify('[layout.nvim] Group exists on multiple sides; use: Layout toggle <side> ' .. group_name, vim.log.levels.WARN)
         return
       end
       vim.notify('[layout.nvim] Group not found: ' .. group_name, vim.log.levels.WARN)
     elseif sub == 'close' then
       local side = fargs[2]
-      local valid = { left = true, right = true, bottom = true }
-      if not side or not valid[side] then
+      if not side or not Constants.side_set[side] then
         vim.notify('[layout.nvim] Usage: Layout close <left|right|bottom>', vim.log.levels.WARN)
         return
       end
@@ -127,7 +143,15 @@ function Commands:setup(config)
           :totable()
       end
 
-      if sub == 'toggle' or sub == 'pick' then
+      if sub == 'toggle' then
+        if (word_count == 2 and trailing_space) or (word_count == 3 and not trailing_space) then
+          local candidates = vim.list_extend(vim.deepcopy(Constants.sides), all_group_names())
+          return vim.iter(candidates):filter(function(n) return vim.startswith(n, arg_lead) end):totable()
+        end
+        local side = words[3]
+        if Constants.side_set[side] then
+          return vim.iter(Group:list(side)):filter(function(n) return vim.startswith(n, arg_lead) end):totable()
+        end
         return vim
           .iter(all_group_names())
           :filter(function(n)

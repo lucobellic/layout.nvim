@@ -126,6 +126,50 @@ describe('config.normalize', function()
       expect.equality(width_ok, false)
       expect.equality(padding_ok, false)
     end)
+
+    it('rejects invalid alignment and pick-key positions during configuration', function()
+      -- Given: unsupported values for closed configuration enums
+      -- When: the configurations are merged
+      local align_ok = pcall(config.merge, { bottom = { align = 'diagonal' } })
+      local pose_ok = pcall(config.merge, { statusline = { pick_key_pose = 'center' } })
+
+      -- Then: setup fails before any windows are opened
+      expect.equality(align_ok, false)
+      expect.equality(pose_ok, false)
+    end)
+
+    it('rejects duplicate group and view names on the same side', function()
+      -- Given: declarations that would overwrite their name-keyed registry entries
+      local duplicate_groups = config.merge({
+        left = {
+          groups = {
+            { name = 'tools', views = {} },
+            { name = 'tools', views = {} },
+          },
+        },
+      })
+      local duplicate_views = config.merge({
+        left = {
+          groups = {
+            {
+              name = 'tools',
+              views = {
+                { name = 'terminal', filter = 'one' },
+                { name = 'terminal', filter = 'two' },
+              },
+            },
+          },
+        },
+      })
+
+      -- When: the declarations are normalized
+      local groups_ok = pcall(config.normalize, duplicate_groups)
+      local views_ok = pcall(config.normalize, duplicate_views)
+
+      -- Then: neither declaration is silently overwritten
+      expect.equality(groups_ok, false)
+      expect.equality(views_ok, false)
+    end)
   end)
 
   describe('entry filtering', function()
