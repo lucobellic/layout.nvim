@@ -6,6 +6,7 @@
 
 ---@class Layout.Panel.Model.Size.Runtime
 ---@field applied table<Layout.Side, integer?> Dimensions committed by the last successful placement.
+---@field applied_slots table<string, integer?> Stacking dimensions committed for managed views.
 ---@field placed_windows table<integer, boolean>? Normal-window set committed by the last successful placement.
 ---@field topology_dirty boolean Whether window lifecycle changes require placement.
 ---@field editor_resized boolean Whether editor dimensions changed before relative sizes were reapplied.
@@ -22,10 +23,14 @@
 ---@class Layout.Panel.Model.Size
 ---@field private sizes table<Layout.Side, Layout.Size?> Shared tracked panel preferences.
 ---@field private configured table<Layout.Side, Layout.Size?> Configured fallback used to preserve absolute/relative mode.
+---@field private slot_sizes table<string, Layout.Size?> Shared tracked view preferences.
+---@field private configured_slots table<string, Layout.Size?> Configured view sizes used to preserve absolute/relative mode.
 ---@field private runtime table<integer, Layout.Panel.Model.Size.Runtime> Runtime state keyed by tabpage handle.
 local Size = {
   sizes = {},
   configured = {},
+  slot_sizes = {},
+  configured_slots = {},
   runtime = {},
 }
 
@@ -45,6 +50,7 @@ local function runtime_for(tabpage)
   if not Size.runtime[id] then
     Size.runtime[id] = {
       applied = {},
+      applied_slots = {},
       placed_windows = nil,
       topology_dirty = false,
       editor_resized = false,
@@ -53,6 +59,14 @@ local function runtime_for(tabpage)
     }
   end
   return Size.runtime[id]
+end
+
+---@param win integer
+---@return string?
+local function slot_key_of(win)
+  local ok, key = pcall(vim.api.nvim_win_get_var, win, 'layout_view_key')
+  if not ok or type(key) ~= 'string' then return nil end
+  return key
 end
 
 ---@param win integer
@@ -108,6 +122,43 @@ local function panel_dimensions(wins, sides)
   return dimensions
 end
 
+---Return stacking dimensions and total content size for managed slots.
+---@param wins integer[]
+---@param changed? integer[]
+---@return table<string, integer>
+---@return table<Layout.Side, integer>
+---@return table<Layout.Side, integer>
+---@return table<string, Layout.Side>
+local function slot_dimensions(wins, changed)
+  local changed_set = nil
+  if type(changed) == 'table' and #changed > 0 then
+    changed_set = {}
+    for _, win in ipairs(changed) do
+      local id = tonumber(win)
+      if id then changed_set[id] = true end
+    end
+  end
+
+  local dimensions = {}
+  local totals = {}
+  local counts = {}
+  local sides = {}
+  for _, win in ipairs(wins) do
+    if vim.api.nvim_win_is_valid(win) then
+      local side = side_of(win)
+      local key = side and slot_key_of(win) or nil
+      if side and key then
+        local actual = side == 'bottom' and vim.api.nvim_win_get_width(win) or vim.api.nvim_win_get_height(win)
+        totals[side] = (totals[side] or 0) + actual
+        counts[side] = (counts[side] or 0) + 1
+        sides[key] = side
+        if not changed_set or changed_set[win] then dimensions[key] = actual end
+      end
+    end
+  end
+  return dimensions, totals, counts, sides
+end
+
 ---Return whether current topology matches the last committed placement.
 ---@param runtime Layout.Panel.Model.Size.Runtime
 ---@param tabpage? integer
@@ -146,6 +197,22 @@ local function capture_dimensions(wins, runtime, changed)
       captured = true
     end
   end
+
+  local slots, totals, counts, slot_sides = slot_dimensions(wins, changed)
+  for key, actual in pairs(slots) do
+    local side = slot_sides[key]
+    local previous = runtime.applied_slots[key]
+    if side and counts[side] > 1 and previous and actual ~= previous then
+      local preference = Size.slot_sizes[key] or Size.configured_slots[key]
+      if preference and SharedSize.is_relative(preference) then
+        Size.slot_sizes[key] = SharedSize.to_fraction(actual, totals[side])
+      else
+        Size.slot_sizes[key] = math.max(1, actual)
+      end
+      runtime.applied_slots[key] = actual
+      captured = true
+    end
+  end
   return captured, true
 end
 
@@ -154,6 +221,8 @@ end
 function Size:clear()
   self.sizes = {}
   self.configured = {}
+  self.slot_sizes = {}
+  self.configured_slots = {}
   self.runtime = {}
 end
 
@@ -176,6 +245,16 @@ function Size:get(side, fallback)
   return self.sizes[side] or fallback
 end
 
+---Return a tracked view size or its configured fallback.
+---@public
+---@param key string
+---@param fallback? Layout.Size
+---@return Layout.Size?
+function Size:get_slot(key, fallback)
+  self.configured_slots[key] = fallback
+  return self.slot_sizes[key] or fallback
+end
+
 ---Initialize an unseen tabpage without treating its geometry as a resize.
 ---@public
 ---@param tabpage? integer
@@ -184,6 +263,7 @@ function Size:initialize_tab(tabpage)
   if runtime.placed_windows then return end
   local wins = vim.api.nvim_tabpage_list_wins(tab_id(tabpage))
   runtime.applied = panel_dimensions(wins)
+  runtime.applied_slots = slot_dimensions(wins)
   runtime.placed_windows = Windows.normal_set(tab_id(tabpage))
 end
 
@@ -230,7 +310,9 @@ end
 ---@public
 function Size:commit_live()
   local runtime = runtime_for()
-  runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
+  local wins = vim.api.nvim_tabpage_list_wins(0)
+  runtime.applied = panel_dimensions(wins)
+  runtime.applied_slots = slot_dimensions(wins)
   runtime.placed_windows = Windows.normal_set()
   runtime.topology_dirty = false
   runtime.editor_resized = false
@@ -242,7 +324,9 @@ end
 ---@public
 function Size:settle_topology()
   local runtime = runtime_for()
-  runtime.applied = panel_dimensions(vim.api.nvim_tabpage_list_wins(0))
+  local wins = vim.api.nvim_tabpage_list_wins(0)
+  runtime.applied = panel_dimensions(wins)
+  runtime.applied_slots = slot_dimensions(wins)
   runtime.placed_windows = Windows.normal_set()
   runtime.topology_dirty = false
   runtime.editor_resized = false

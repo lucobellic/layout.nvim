@@ -23,11 +23,11 @@
 
 ---@alias Layout.Entity.Panel.Presumed table<integer, Layout.Entity.Panel.PresumedEntry>
 
+local Constants = require('layout.shared.constants')
 local placement = require('layout.shared.placement')
 local size_model = require('layout.entities.panel.model.size')
 local view_entity = require('layout.entities.view')
 local view_state = require('layout.shared.view_state')
-local Constants = require('layout.shared.constants')
 
 ---@class Layout.Entity.Panel
 ---@field registry Layout.Registry? Registry reference for the current tabpage, set via `set_registry`.
@@ -59,11 +59,12 @@ local function finalize_side_slots(side, raw, order)
     return keys
   end)
 
-  ---@param total_counts table<string, Layout.Entity.Panel.RawSlot>
+  ---@param total_counts table<string, integer>
   ---@param item Layout.Entity.Panel.RawSlot
-  ---@type table<string, Layout.Entity.Panel.RawSlot>
+  ---@type table<string, integer>
   local total_counts = vim.iter(raw):fold({}, function(total_counts, item)
-    total_counts[item.vname] = (total_counts[item.vname] or 0) + 1
+    local identity = item.gname .. '\0' .. item.vname
+    total_counts[identity] = (total_counts[identity] or 0) + 1
     return total_counts
   end)
 
@@ -71,19 +72,22 @@ local function finalize_side_slots(side, raw, order)
   ---@param item Layout.Entity.Panel.RawSlot
   ---@type table<string, number>
   local max_idx = vim.iter(keys.with_key):fold({}, function(max_idx, item)
+    local identity = item.gname .. '\0' .. item.vname
     local idx = item.key:match(':(%d+)$')
-    if idx then max_idx[item.vname] = math.max(max_idx[item.vname] or 0, tonumber(idx)) end
+    if idx then max_idx[identity] = math.max(max_idx[identity] or 0, tonumber(idx)) end
     return max_idx
   end)
 
   ---@param item Layout.Entity.Panel.RawSlot
   vim.iter(keys.without_key):each(function(item)
-    if total_counts[item.vname] > 1 then
-      local n = (max_idx[item.vname] or 0) + 1
-      max_idx[item.vname] = n
-      item.key = side .. ':' .. item.vname .. ':' .. n
+    local identity = item.gname .. '\0' .. item.vname
+    local base = side .. ':' .. item.gname .. ':' .. item.vname
+    if total_counts[identity] > 1 then
+      local n = (max_idx[identity] or 0) + 1
+      max_idx[identity] = n
+      item.key = base .. ':' .. n
     else
-      item.key = side .. ':' .. item.vname
+      item.key = base
     end
   end)
 
@@ -98,7 +102,7 @@ local function finalize_side_slots(side, raw, order)
           _key = item.key,
           _vname = item.vname,
           _gname = item.gname,
-          size = item.ve and item.ve.size,
+          size = size_model:get_slot(item.key, item.ve and item.ve.size),
         }
       end
     )

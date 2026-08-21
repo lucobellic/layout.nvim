@@ -152,6 +152,80 @@ describe('panel resizing', function()
       child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
       expect.equality(child.api.nvim_win_get_width(winL), 40)
     end)
+
+    it('keeps user-resized view heights within a group on the next arrange', function()
+      -- Given: two views stacked in one left-panel group with configured sizes
+      U.setup_config(
+        child,
+        U.test_config({
+          left = {
+            size = 30,
+            groups = {
+              explorer = {
+                views = {
+                  first = { filter = 'toolA', open = 'echo first', size = 10 },
+                  second = { filter = 'toolB', open = 'echo second', size = 30 },
+                },
+              },
+            },
+          },
+        })
+      )
+      local first = U.make_tool_win(child, 'toolA')
+      child.cmd('belowright split')
+      local second = U.make_tool_win(child, 'toolB')
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+      expect.equality(child.api.nvim_win_get_height(first), 10)
+      local initial_second = child.api.nvim_win_get_height(second)
+
+      -- When: the user moves the separator and another arrangement runs
+      child.api.nvim_win_set_height(first, 8)
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+
+      -- Then: both live heights are retained instead of restoring config sizes
+      expect.equality(child.api.nvim_win_get_height(first), 8)
+      expect.equality(child.api.nvim_win_get_height(second), initial_second + 2)
+    end)
+
+    it('keeps user-resized view widths within a bottom group after reopening it', function()
+      -- Given: two views stacked horizontally in one bottom-panel group
+      U.setup_config(
+        child,
+        U.test_config({
+          bottom = {
+            size = 15,
+            groups = {
+              tools = {
+                views = {
+                  first = { filter = 'toolA', open = 'echo first' },
+                  second = { filter = 'toolB', open = 'echo second' },
+                },
+              },
+            },
+          },
+        })
+      )
+      local first = U.make_tool_win(child, 'toolA')
+      child.cmd('belowright vsplit')
+      local second = U.make_tool_win(child, 'toolB')
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+
+      -- When: the user moves the separator, closes both views, and reopens them
+      local expected_first = child.api.nvim_win_get_width(first) + 5
+      child.api.nvim_win_set_width(first, expected_first)
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+      local expected_second = child.api.nvim_win_get_width(second)
+      child.api.nvim_win_close(first, true)
+      child.api.nvim_win_close(second, true)
+      local reopened_first = U.make_tool_win(child, 'toolA')
+      child.cmd('belowright vsplit')
+      local reopened_second = U.make_tool_win(child, 'toolB')
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+
+      -- Then: the group restores the user-selected internal widths
+      expect.equality(child.api.nvim_win_get_width(reopened_first), expected_first)
+      expect.equality(child.api.nvim_win_get_width(reopened_second), expected_second)
+    end)
   end)
 
   --------------------------------------------------------------------------------
