@@ -9,6 +9,8 @@
 local Group = require('layout.entities.group')
 local Toggle = require('layout.features.toggle')
 local View = require('layout.entities.view')
+local PickPose = require('layout.shared.pick_pose')
+local Constants = require('layout.shared.constants')
 
 ---@class Layout.Statusline.Cache.Line
 ---@field name string Group name (used for active-group lookup)
@@ -75,13 +77,8 @@ end
 ---@return table<Layout.Side, table<string, boolean>>
 local function compute_active()
   local active = { left = {}, right = {}, bottom = {} }
-  local wins = vim.api.nvim_tabpage_list_wins(0)
-  vim.iter(wins):each(function(winid)
-    if vim.api.nvim_win_is_valid(winid) then
-      local bufnr = vim.api.nvim_win_get_buf(winid)
-      local side, gname = View:match_by_buf(bufnr, winid)
-      if side and gname and active[side] then active[side][gname] = true end
-    end
+  vim.iter(View:iter_matches()):each(function(match)
+    active[match.side][match.group] = true
   end)
   return active
 end
@@ -93,7 +90,7 @@ end
 function Statusline:get_entries()
   local active = compute_active()
   local entries = {}
-  for _, side in ipairs({ 'left', 'right', 'bottom' }) do
+  for _, side in ipairs(Constants.sides) do
     for index, line in ipairs(self.cache[side] or {}) do
       entries[#entries + 1] = {
         side = side,
@@ -117,7 +114,7 @@ function Statusline:build_cache()
   self.cache = {}
   self.click_map = {}
   local minwid = 0
-  for _, side in ipairs({ 'left', 'right', 'bottom' }) do
+  for _, side in ipairs(Constants.sides) do
     self.cache[side] = vim.iter(Group:list(side)):fold({}, function(lines, gname)
       local gdesc = Group:get(side, gname)
       if not gdesc then return lines end
@@ -223,7 +220,8 @@ function Statusline:build_line(side, index, line, active)
       .. click_suffix
   end
 
-  local build = self.pick_lines[self.opts.pick_key_pose] or self.pick_lines['left']
+  local pose = self.opts.pick_key_pose
+  local build = self.pick_lines[pose] or self.pick_lines[PickPose.kind(pose)]
   return build(pick, sep_hl, icon_hl, line)
 end
 

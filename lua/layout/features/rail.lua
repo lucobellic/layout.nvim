@@ -2,6 +2,7 @@
 
 local SharedSize = require('layout.shared.size')
 local Statusline = require('layout.features.statusline')
+local PickPose = require('layout.shared.pick_pose')
 
 ---@class Layout.Feature.Rail.State
 ---@field bufnr integer
@@ -63,9 +64,10 @@ local function add_entry_highlights(bufnr, line, entry)
   end
 
   local pick_group = Statusline:highlight_group('Pick', entry.active, entry.side, entry.index)
-  if Rail.pick_key_pose == 'icon' then
+  local pose = PickPose.kind(Rail.pick_key_pose)
+  if pose == 'icon' then
     add_highlight(bufnr, line, pick_group, padding, padding + #entry.key)
-  elseif Rail.pick_key_pose == 'left' or Rail.pick_key_pose == 'left_separator' then
+  elseif pose == 'left' then
     add_highlight(bufnr, line, pick_group, padding, padding + #entry.key)
     add_highlight(bufnr, line, icon_group, padding + #entry.key, padding + #entry.key + #entry.icon)
   else
@@ -80,9 +82,10 @@ local function entry_text(entry)
   local padding = Rail.opts and Rail.opts.padding or 0
   local text = entry.icon
   if Statusline.pick_mode then
-    if Rail.pick_key_pose == 'icon' then
+    local pose = PickPose.kind(Rail.pick_key_pose)
+    if pose == 'icon' then
       text = entry.key
-    elseif Rail.pick_key_pose == 'left' or Rail.pick_key_pose == 'left_separator' then
+    elseif pose == 'left' then
       text = entry.key .. entry.icon
     else
       text = entry.icon .. entry.key

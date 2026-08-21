@@ -88,7 +88,7 @@ function Pick.prompt(refresh)
     vim.cmd.redrawstatus()
   end)
 
-  local char = vim.fn.getcharstr()
+  local ok, char = pcall(vim.fn.getcharstr)
 
   Statusline.pick_mode = false
   Rail:render()
@@ -97,6 +97,8 @@ function Pick.prompt(refresh)
     vim.cmd.redrawtabline()
     vim.cmd.redrawstatus()
   end)
+
+  if not ok then error(char) end
 
   if char == '\27' then return end
 

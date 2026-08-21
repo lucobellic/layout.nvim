@@ -62,6 +62,21 @@ describe('features.pick', function()
     expect.equality(child.lua_get([[_G._picked]]), { side = 'left', name = 'explorer' })
   end)
 
+  it('clears pick mode when reading input fails', function()
+    -- Given: the input provider raises while pick mode is active
+    U.setup_config(child, U.test_config({
+      left = { groups = { explorer = { picker = { key = 'e' } } } },
+    }))
+    child.lua([[vim.fn.getcharstr = function() error('input interrupted') end]])
+
+    -- When: the picker attempts to read input
+    child.lua([[_G._prompt_ok = pcall(require('layout.features.pick').prompt)]])
+
+    -- Then: the error propagates but transient UI state is cleaned up
+    expect.equality(child.lua_get([[_G._prompt_ok]]), false)
+    expect.equality(child.lua_get([[require('layout.features.statusline').pick_mode]]), false)
+  end)
+
   describe('Shared picker keys', function()
     it('opens every group sharing a key', function()
       -- Given: closed groups in every panel share the key "d".
