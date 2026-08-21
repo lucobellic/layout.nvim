@@ -4,6 +4,8 @@ An opinionated panel manager for Neovim that brings standard IDE-style
 window arrangements with reserved left/right/bottom panels, declarative view
 configuration, persistent per-project layouts, and zero dependencies.
 
+Requires Neovim 0.10 or newer.
+
 The optional icon rail shows every configured group in a fixed-width window.
 It can either float over the editor or reserve a normal buffer window:
 
@@ -45,6 +47,17 @@ Toggle the configured rail globally at runtime:
 ```lua
 require('layout').toggle_rail()
 ```
+
+## Health Check
+
+Run the built-in diagnostics after configuring the plugin:
+
+```vim
+:checkhealth layout
+```
+
+The report checks the Neovim version, setup and registry state, workspace
+storage access, and metadata for managed windows in the current tabpage.
 
 Each rail section selects a configured panel side. Unmapped sides are omitted.
 When the sections do not fit at their ideal anchors, they are packed in top,
