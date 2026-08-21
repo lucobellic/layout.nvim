@@ -12,6 +12,11 @@
 ---@field key? string Per-occurrence key (e.g. "bottom:debug:2") or nil
 ---@field ve Layout.View.Entry?
 
+---@class Layout.Entity.Panel.Slot : Placement.Slot
+---@field _key? string Stable per-occurrence view key.
+---@field _vname string View name.
+---@field _gname string Group name.
+
 --- Speculative classification for a window whose filter cannot match yet.
 --- Keyed by winid; produced by the toggle feature for windows spawned by
 --- a view's own `open` command.
@@ -44,7 +49,7 @@ local Panel = {
 ---@param side Layout.Side
 ---@param raw Layout.Entity.Panel.RawSlot[]
 ---@param order { group: table<string, integer>, view: table<string, integer> }
----@return Placement.Slot[]
+---@return Layout.Entity.Panel.Slot[]
 local function finalize_side_slots(side, raw, order)
   if #raw == 0 then return {} end
 
@@ -91,6 +96,7 @@ local function finalize_side_slots(side, raw, order)
     end
   end)
 
+  ---@type Layout.Entity.Panel.Slot[]
   local slots = vim
     .iter(raw)
     :map(
@@ -200,25 +206,35 @@ local function arrange(registry, presumed)
     end
   end)
 
-  ---@type table<Layout.Side, Placement.Slot[]>
+  ---@type table<Layout.Side, Layout.Entity.Panel.Slot[]>
   local side_slots = {}
   vim.iter(Constants.sides):each(function(side)
     side_slots[side] = finalize_side_slots(side, raw[side], order_maps[side] or { group = {}, view = {} })
   end)
 
-  ---@type Placement.Spec
-  local spec = { center = true }
-  spec.rail = rail
+  ---@type table<Layout.Side, Placement.Region>
+  local regions = {}
   vim.iter(Constants.sides):each(function(side)
     local se = registry[side]
     if se and #side_slots[side] > 0 then
-      spec[side] = {
+      ---@type Placement.Region
+      local region = {
         size = size_model:get(side, se.size),
         slots = side_slots[side],
       }
-      if side == 'bottom' and se.align then spec[side].align = se.align end
+      if side == 'bottom' and se.align then region.align = se.align end
+      regions[side] = region
     end
   end)
+
+  ---@type Placement.Spec
+  local spec = {
+    center = true,
+    rail = rail,
+    left = regions.left,
+    right = regions.right,
+    bottom = regions.bottom,
+  }
 
   placement.place(spec)
 

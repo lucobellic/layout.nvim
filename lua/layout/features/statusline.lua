@@ -6,11 +6,11 @@
 ---
 --- on_click(minwid) serves as the v:lua click handler for clickable regions.
 
+local Constants = require('layout.shared.constants')
 local Group = require('layout.entities.group')
+local PickPose = require('layout.shared.pick_pose')
 local Toggle = require('layout.features.toggle')
 local View = require('layout.entities.view')
-local PickPose = require('layout.shared.pick_pose')
-local Constants = require('layout.shared.constants')
 
 ---@class Layout.Statusline.Cache.Line
 ---@field name string Group name (used for active-group lookup)
@@ -37,6 +37,7 @@ local Statusline = {
   pick_mode = false,
   cache = {},
   click_map = {},
+  ---@diagnostic disable-next-line: missing-fields
   opts = {},
   pick_lines = {},
 }

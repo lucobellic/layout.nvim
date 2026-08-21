@@ -1,8 +1,10 @@
 ---Fixed-width floating or buffer rail for layout group icons.
 
+local PickPose = require('layout.shared.pick_pose')
 local SharedSize = require('layout.shared.size')
 local Statusline = require('layout.features.statusline')
-local PickPose = require('layout.shared.pick_pose')
+
+local HIGHLIGHT_NS = vim.api.nvim_create_namespace('LayoutRailHighlights')
 
 ---@class Layout.Feature.Rail.State
 ---@field bufnr integer
@@ -48,7 +50,12 @@ end
 ---@param end_col integer
 ---@return nil
 local function add_highlight(bufnr, line, group, start_col, end_col)
-  if group then vim.api.nvim_buf_add_highlight(bufnr, -1, group, line - 1, start_col, end_col) end
+  if not group then return end
+  vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NS, line - 1, start_col, {
+    end_col = end_col >= 0 and end_col or nil,
+    hl_eol = end_col < 0,
+    hl_group = group,
+  })
 end
 
 ---@param bufnr integer
@@ -121,14 +128,12 @@ local function reject_buffer_rail_focus()
   end
   if not target then return end
   vim.api.nvim_set_current_win(target)
-  vim.api.nvim_win_set_width(winid, Rail.opts.width)
+  vim.api.nvim_win_set_config(winid, { width = Rail.opts.width })
 end
 
 ---@return string keys Keys passed back to Neovim's mapping engine.
 local function handle_left_mouse()
-  if not Rail.clickable or not Rail.opts or not Rail.opts.enabled then
-    return '<LeftMouse>'
-  end
+  if not Rail.clickable or not Rail.opts or not Rail.opts.enabled then return '<LeftMouse>' end
 
   local mouse = vim.fn.getmousepos()
   local state = Rail.state[vim.api.nvim_get_current_tabpage()]
@@ -215,7 +220,7 @@ local function ensure_state(tabpage)
   vim.wo[winid].signcolumn = 'no'
   vim.wo[winid].foldcolumn = '0'
   if Rail.opts and Rail.opts.mode == 'buffer' then
-    vim.api.nvim_win_set_width(winid, Rail.opts.width)
+    vim.api.nvim_win_set_config(winid, { width = Rail.opts.width })
     vim.wo[winid].winfixwidth = true
   end
 
@@ -306,7 +311,7 @@ function Rail:render()
   vim.bo[state.bufnr].modifiable = true
   vim.api.nvim_buf_set_lines(state.bufnr, 0, -1, false, lines)
   vim.bo[state.bufnr].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.bufnr, -1, 0, -1)
+  vim.api.nvim_buf_clear_namespace(state.bufnr, HIGHLIGHT_NS, 0, -1)
   for index, entry in pairs(state.entries) do
     local hovered = self.hover_line[tabpage] == index
     if hovered then

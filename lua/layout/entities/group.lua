@@ -103,28 +103,50 @@ end
 ---@public
 ---@return fun(): Layout.Side?, string?, Layout.Entity.Group.Desc?
 function Group:iter()
-  local sides = Constants.sides
-  local si = 0
-  local keys = nil
-  local ki = 0
-  return function()
-    while true do
-      if not keys then
-        si = si + 1
-        if si > #sides then return nil end
-        keys = self.group_order[sides[si]]
-        if keys then ki = 0 end
-      else
-        ki = ki + 1
-        if ki > #keys then
-          keys = nil
-        else
-          local k = keys[ki]
-          local sg = self.groups[sides[si]]
-          if sg then return sides[si], k, sg[k] end
-        end
+  ---@type { side: Layout.Side, name: string, descriptor: Layout.Entity.Group.Desc }[]
+  local entries = vim
+    .iter(Constants.sides)
+    :map(
+      ---@param side Layout.Side
+      ---@return table[]
+      function(side)
+        local descriptors = self.groups[side] or {}
+        return vim
+          .iter(self.group_order[side] or {})
+          :map(
+            ---@param group_name string
+            ---@return { name: string, descriptor: Layout.Entity.Group.Desc? }
+            function(group_name)
+              return { name = group_name, descriptor = descriptors[group_name] }
+            end
+          )
+          :filter(
+            ---@param entry { name: string, descriptor: Layout.Entity.Group.Desc? }
+            ---@return boolean
+            function(entry)
+              return entry.descriptor ~= nil
+            end
+          )
+          :map(
+            ---@param entry { name: string, descriptor: Layout.Entity.Group.Desc? }
+            ---@return { side: Layout.Side, name: string, descriptor: Layout.Entity.Group.Desc }
+            function(entry)
+              assert(entry.descriptor)
+              return { side = side, name = entry.name, descriptor = entry.descriptor }
+            end
+          )
+          :totable()
       end
-    end
+    )
+    :flatten()
+    :totable()
+
+  local index = 0
+  return function()
+    index = index + 1
+    local entry = entries[index]
+    if not entry then return nil end
+    return entry.side, entry.name, entry.descriptor
   end
 end
 

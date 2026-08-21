@@ -83,6 +83,7 @@ function Shape.build(spec)
     error('placement: unknown align ' .. tostring(Spec.align_of(spec)))
   end
   root = collapse(root)
+  if not root then error('placement: shape must contain at least one window') end
   if spec.rail then
     local rail = { 'leaf', spec.rail.slot.label }
     if spec.rail.position == 'left' then

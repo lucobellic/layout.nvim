@@ -4,10 +4,10 @@
 --- or rebuilding the window tree from scratch. Source windows keep their
 --- buffers; a newly created center may load a hidden listed buffer.
 
+local Constants = require('layout.shared.constants')
 local Shape = require('layout.shared.placement.shape')
 local Size = require('layout.shared.size')
 local Spec = require('layout.shared.placement.spec')
-local Constants = require('layout.shared.constants')
 
 ---@class Placement.Engine
 local Engine = {}
@@ -25,6 +25,7 @@ end
 ---@param win integer?
 ---@return boolean
 local function normal(win)
+  if type(win) ~= 'number' then return false end
   return valid(win) and vim.api.nvim_win_get_config(win).relative == ''
 end
 
@@ -352,7 +353,6 @@ local function apply_sizes(spec, editor_width, editor_height)
       vim.api.nvim_set_option_value('winfixheight', true, { win = slot.winid })
     end
   end
-
 end
 
 --- Run fn with deterministic window options, then restore them.

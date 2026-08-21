@@ -16,13 +16,16 @@ local Toggle = {}
 --- Run the open command/function for a view.
 ---@private
 ---@param view Layout.View.Entry
+---@return nil
 local function run_open(view)
   local open = view.open
   if not open then return end
   if type(open) == 'function' then
     pcall(open)
   elseif type(open) == 'string' then
-    pcall(vim.cmd, open)
+    pcall(function()
+      vim.cmd(open)
+    end)
   end
 end
 
@@ -39,11 +42,7 @@ local function windows_created_by(fn)
   fn()
   local created = {}
   for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    if
-      not before[winid]
-      and vim.api.nvim_win_is_valid(winid)
-      and vim.api.nvim_win_get_config(winid).relative == ''
-    then
+    if not before[winid] and vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_config(winid).relative == '' then
       created[#created + 1] = winid
     end
   end
@@ -90,9 +89,7 @@ local function arrange_now(expected, presumed)
     Panel:arrange(nil, presumed)
     presumed = nil
     attempts = attempts + 1
-    if attempts < ARRANGE_MAX_ATTEMPTS and not converged() then
-      vim.schedule(step)
-    end
+    if attempts < ARRANGE_MAX_ATTEMPTS and not converged() then vim.schedule(step) end
   end
   step()
 end
