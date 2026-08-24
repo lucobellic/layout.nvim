@@ -3,7 +3,7 @@
 ---@class Layout.Shared.Size
 local Size = {}
 
----Return whether a size is relative to its container.
+--- Return whether a size is relative to its container.
 ---@public
 ---@param size Layout.Size
 ---@return boolean
@@ -11,7 +11,7 @@ function Size.is_relative(size)
   return type(size) == 'number' and size > 0 and size < 1
 end
 
----Validate a panel or view size.
+--- Validate a panel or view size.
 ---@public
 ---@param size Layout.Size
 ---@param context? string
@@ -31,7 +31,7 @@ function Size.validate(size, context)
   return size
 end
 
----Resolve a size against its container dimension.
+--- Resolve a size against its container dimension.
 ---@public
 ---@param size Layout.Size
 ---@param container integer
@@ -42,8 +42,8 @@ function Size.resolve(size, container)
   return math.max(1, math.floor(size * container))
 end
 
----Convert an observed dimension into a valid fraction of its container.
----Transient zero and oversized dimensions are clamped to representable values.
+--- Convert an observed dimension into a valid fraction of its container.
+--- Transient zero and oversized dimensions are clamped to representable values.
 ---@public
 ---@param dimension integer
 ---@param container integer
@@ -54,7 +54,7 @@ function Size.to_fraction(dimension, container)
   return math.min(math.max(1, dimension), container - 1) / container
 end
 
----Return the dimensions occupied by the current normal-window editor grid.
+--- Return the dimensions occupied by the current normal-window editor grid.
 ---@public
 ---@return integer width
 ---@return integer height

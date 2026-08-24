@@ -258,11 +258,10 @@ function Config.merge(opts)
   return merged
 end
 
----Register valid configured views in declaration order on a normalized group.
+--- Register valid configured views in declaration order on a normalized group.
 ---@param side Layout.Side
 ---@param group Layout.Group.Config
 ---@param group_entry Layout.Group.Entry
----@return nil
 local function normalize_group_views(side, group, group_entry)
   if not group.views or type(group.views) ~= 'table' or group.views[1] == nil then return end
   for _, view in ipairs(group.views) do

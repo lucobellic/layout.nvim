@@ -1,4 +1,4 @@
----Health diagnostics for the layout health command.
+--- Health diagnostics for the layout health command.
 
 local Config = require('layout.shared.config')
 local Constants = require('layout.shared.constants')
@@ -112,7 +112,6 @@ local function check_setup()
 end
 
 ---@param config Layout.Config
----@return nil
 local function check_storage(config)
   vim.health.start('Workspace persistence')
   local workspaces = config.workspaces
@@ -151,7 +150,6 @@ local function check_storage(config)
   end
 end
 
----@return nil
 local function check_windows()
   vim.health.start('Current tabpage')
   local matched = {}
@@ -196,9 +194,8 @@ local function check_windows()
   end
 end
 
----Run all layout.nvim health checks.
+--- Run all layout.nvim health checks.
 ---@public
----@return nil
 function Health.check()
   vim.health.start('Environment')
   local version = vim.version()

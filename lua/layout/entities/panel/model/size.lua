@@ -80,7 +80,7 @@ local function side_of(win)
   return nil
 end
 
----Return managed sides represented by the changed-window list.
+--- Return managed sides represented by the changed-window list.
 ---@param wins integer[]
 ---@param changed? integer[]
 ---@return table<Layout.Side, boolean>
@@ -105,7 +105,7 @@ local function managed_sides(wins, changed)
   return sides
 end
 
----Return the first managed panel dimension for each requested side.
+--- Return the first managed panel dimension for each requested side.
 ---@param wins integer[]
 ---@param sides? table<Layout.Side, boolean>
 ---@return table<Layout.Side, integer>
@@ -122,7 +122,7 @@ local function panel_dimensions(wins, sides)
   return dimensions
 end
 
----Return stacking dimensions and total content size for managed slots.
+--- Return stacking dimensions and total content size for managed slots.
 ---@param wins integer[]
 ---@param changed? integer[]
 ---@return table<string, integer>
@@ -159,7 +159,7 @@ local function slot_dimensions(wins, changed)
   return dimensions, totals, counts, sides
 end
 
----Return whether current topology matches the last committed placement.
+--- Return whether current topology matches the last committed placement.
 ---@param runtime Layout.Panel.Model.Size.Runtime
 ---@param tabpage? integer
 ---@return boolean
@@ -170,7 +170,7 @@ local function topology_is_stable(runtime, tabpage)
   return stable and not runtime.capture_invalid
 end
 
----Capture selected managed panel dimensions as user preferences.
+--- Capture selected managed panel dimensions as user preferences.
 ---@param wins integer[]
 ---@param runtime Layout.Panel.Model.Size.Runtime
 ---@param changed? integer[]
@@ -216,7 +216,7 @@ local function capture_dimensions(wins, runtime, changed)
   return captured, true
 end
 
----Clear all preferences and tab-local runtime state.
+--- Clear all preferences and tab-local runtime state.
 ---@package
 function Size:clear()
   self.sizes = {}
@@ -226,7 +226,7 @@ function Size:clear()
   self.runtime = {}
 end
 
----Explicitly set the shared tracked size for a side.
+--- Explicitly set the shared tracked size for a side.
 ---@package
 ---@param side Layout.Side
 ---@param size Layout.Size
@@ -235,7 +235,7 @@ function Size:set(side, size)
   self.sizes[side] = size
 end
 
----Return the shared tracked preference or configured fallback.
+--- Return the shared tracked preference or configured fallback.
 ---@public
 ---@param side Layout.Side
 ---@param fallback Layout.Size
@@ -245,7 +245,7 @@ function Size:get(side, fallback)
   return self.sizes[side] or fallback
 end
 
----Return a tracked view size or its configured fallback.
+--- Return a tracked view size or its configured fallback.
 ---@public
 ---@param key string
 ---@param fallback? Layout.Size
@@ -255,7 +255,7 @@ function Size:get_slot(key, fallback)
   return self.slot_sizes[key] or fallback
 end
 
----Initialize an unseen tabpage without treating its geometry as a resize.
+--- Initialize an unseen tabpage without treating its geometry as a resize.
 ---@public
 ---@param tabpage? integer
 function Size:initialize_tab(tabpage)
@@ -267,7 +267,7 @@ function Size:initialize_tab(tabpage)
   runtime.placed_windows = Windows.normal_set(tab_id(tabpage))
 end
 
----Capture current managed dimensions only when topology is stable.
+--- Capture current managed dimensions only when topology is stable.
 ---@public
 ---@return boolean captured
 function Size:update_live()
@@ -278,7 +278,7 @@ function Size:update_live()
   return captured
 end
 
----Observe a WinResized event and classify its managed-panel effect.
+--- Observe a WinResized event and classify its managed-panel effect.
 ---@public
 ---@param changed? integer[] Window ids from `vim.v.event.windows`.
 ---@param allow_dirty? boolean Capture during known active user resizing even if topology changed.
@@ -295,7 +295,7 @@ function Size:observe_resize(changed, allow_dirty)
   return 'unrelated'
 end
 
----Begin a placement transaction after capturing any stable user resize.
+--- Begin a placement transaction after capturing any stable user resize.
 ---@public
 ---@return boolean started
 function Size:begin_placement()
@@ -306,7 +306,7 @@ function Size:begin_placement()
   return true
 end
 
----Commit corrected dimensions and topology after successful placement.
+--- Commit corrected dimensions and topology after successful placement.
 ---@public
 function Size:commit_live()
   local runtime = runtime_for()
@@ -320,7 +320,7 @@ function Size:commit_live()
   runtime.placing = false
 end
 
----Commit an empty/unmanaged topology without changing preferences.
+--- Commit an empty/unmanaged topology without changing preferences.
 ---@public
 function Size:settle_topology()
   local runtime = runtime_for()
@@ -334,7 +334,7 @@ function Size:settle_topology()
   runtime.placing = false
 end
 
----Release a failed placement transaction while retaining its dirty state.
+--- Release a failed placement transaction while retaining its dirty state.
 ---@public
 function Size:abort_placement()
   local runtime = runtime_for()
@@ -343,13 +343,13 @@ function Size:abort_placement()
   runtime.capture_invalid = true
 end
 
----Mark current tabpage topology as requiring placement.
+--- Mark current tabpage topology as requiring placement.
 ---@public
 function Size:mark_topology_changed()
   runtime_for().topology_dirty = true
 end
 
----Prevent editor resizing in every known tab from being captured as a panel preference.
+--- Prevent editor resizing in every known tab from being captured as a panel preference.
 ---@public
 function Size:mark_editor_resized()
   runtime_for().editor_resized = true
@@ -358,7 +358,7 @@ function Size:mark_editor_resized()
   end
 end
 
----Return whether current topology differs from the committed topology.
+--- Return whether current topology differs from the committed topology.
 ---@public
 ---@return boolean
 function Size:topology_changed()
@@ -369,7 +369,7 @@ function Size:topology_changed()
   return runtime.topology_dirty or runtime.capture_invalid
 end
 
----Discard runtime entries for tabpages that no longer exist.
+--- Discard runtime entries for tabpages that no longer exist.
 ---@public
 function Size:prune_tabs()
   for tabpage in pairs(self.runtime) do

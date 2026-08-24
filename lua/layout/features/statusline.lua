@@ -49,7 +49,7 @@ local function capitalize(str)
   return str:sub(1, 1):upper() .. str:sub(2)
 end
 
----Return the configured highlight group for a group entry state.
+--- Return the configured highlight group for a group entry state.
 ---@public
 ---@param category string ''|'Pick'|'Separator'
 ---@param is_active boolean
@@ -62,7 +62,7 @@ function Statusline:highlight_group(category, is_active, side, index)
   return 'Layout' .. category .. state .. capitalize(side) .. index
 end
 
----Return the configured hover highlight for a group entry.
+--- Return the configured hover highlight for a group entry.
 ---@public
 ---@param side Layout.Side
 ---@param index integer
@@ -84,8 +84,8 @@ local function compute_active()
   return active
 end
 
----Return cached group entries with their current active state.
----The ordering is left, right, bottom and declaration order within each side.
+--- Return cached group entries with their current active state.
+--- The ordering is left, right, bottom and declaration order within each side.
 ---@public
 ---@return Layout.Statusline.Entry[]
 function Statusline:get_entries()
@@ -112,7 +112,6 @@ end
 --- Groups without icons are excluded. A missing key disables keyboard picking
 --- for that entry while still allowing statusline and rail rendering.
 ---@private
----@return nil
 function Statusline:build_cache()
   self.cache = {}
   self.click_map = {}
@@ -146,7 +145,6 @@ function Statusline:setup(registry, opts)
 end
 
 ---@private
----@return nil
 function Statusline:build_pick_lines()
   self.pick_lines = {
     left = function(pick, sep_hl, icon_hl, line)

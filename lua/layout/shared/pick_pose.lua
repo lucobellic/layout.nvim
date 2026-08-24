@@ -1,4 +1,4 @@
----Shared classification for statusline and rail pick-key placement.
+--- Shared classification for statusline and rail pick-key placement.
 
 ---@alias Layout.Shared.PickPose.Kind
 ---| '"left"'
@@ -8,7 +8,7 @@
 ---@class Layout.Shared.PickPose
 local PickPose = {}
 
----Reduce an exact pick-key pose to its visual side.
+--- Reduce an exact pick-key pose to its visual side.
 ---@public
 ---@param pose Layout.Statusline.PickKeyPose
 ---@return Layout.Shared.PickPose.Kind

@@ -110,7 +110,7 @@ function View:match_by_buf(bufnr, winid)
   return entry.side, entry.group, entry.name, entry.view
 end
 
----Iterate matching windows in a tabpage snapshot.
+--- Iterate matching windows in a tabpage snapshot.
 ---@public
 ---@param tabpage? integer
 ---@param normal_only? boolean

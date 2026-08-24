@@ -1,4 +1,4 @@
----BDD tests for :checkhealth layout diagnostics.
+--- BDD tests for :checkhealth layout diagnostics.
 
 local MiniTest = require('mini.test')
 local U = require('tests.util')

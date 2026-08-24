@@ -1,4 +1,4 @@
----Fixed-width floating or buffer rail for layout group icons.
+--- Fixed-width floating or buffer rail for layout group icons.
 
 local PickPose = require('layout.shared.pick_pose')
 local SharedSize = require('layout.shared.size')
@@ -52,7 +52,6 @@ end
 ---@param group string?
 ---@param start_col integer
 ---@param end_col integer
----@return nil
 local function add_highlight(bufnr, line, group, start_col, end_col)
   if not group then return end
   local text = vim.api.nvim_buf_get_lines(bufnr, line - 1, line, false)[1] or ''
@@ -81,7 +80,6 @@ end
 ---@param bufnr integer
 ---@param line integer
 ---@param entry Layout.Statusline.Entry
----@return nil
 local function add_entry_highlights(bufnr, line, entry)
   local padding = Rail.opts and Rail.opts.padding or 0
   local icon_group = highlight(entry)
@@ -123,7 +121,6 @@ local function entry_text(entry)
 end
 
 ---@param tabpage integer
----@return nil
 local function close_state(tabpage)
   local state = Rail.state[tabpage]
   if not state then return end
@@ -133,7 +130,6 @@ local function close_state(tabpage)
   Rail.hover_line[tabpage] = nil
 end
 
----@return nil
 local function reject_buffer_rail_focus()
   if not Rail.opts or Rail.opts.mode ~= 'buffer' then return end
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -167,7 +163,6 @@ local function handle_left_mouse()
   return '<Ignore>'
 end
 
----@return nil
 local function ensure_mouse_mapping()
   if Rail.mouse_mapping then return end
   Rail.mouse_mapping = true
@@ -184,7 +179,6 @@ local function ensure_mouse_mapping()
   })
 end
 
----@return nil
 local function remove_mouse_mapping()
   if not Rail.mouse_mapping then return end
   for _, mode in ipairs({ 'n', 'x', 'o', 'i' }) do
@@ -196,7 +190,6 @@ local function remove_mouse_mapping()
   Rail.mouse_mapping = false
 end
 
----@return nil
 local function ensure_mousemove_listener()
   if Rail.mousemove_ns then return end
   Rail.mousemove_ns = vim.api.nvim_create_namespace('LayoutRailMouseMove')
@@ -208,7 +201,6 @@ local function ensure_mousemove_listener()
   end, Rail.mousemove_ns)
 end
 
----@return nil
 local function disable_mousemove_listener()
   if Rail.mousemove_ns then vim.on_key(nil, Rail.mousemove_ns) end
   Rail.mousemove_ns = nil
@@ -216,7 +208,6 @@ local function disable_mousemove_listener()
   Rail.mousemove_original = nil
 end
 
----@return nil
 local function enable_interactions()
   if Rail.clickable then ensure_mouse_mapping() end
   if Rail.opts and Rail.opts.hover then
@@ -226,7 +217,6 @@ local function enable_interactions()
   end
 end
 
----@return nil
 local function disable_interactions()
   remove_mouse_mapping()
   disable_mousemove_listener()
@@ -269,7 +259,7 @@ local function buffer_window_config(tabpage)
   }
 end
 
----Create the scratch buffer used to render one rail.
+--- Create the scratch buffer used to render one rail.
 ---@return integer bufnr
 local function create_rail_buffer()
   local bufnr = vim.api.nvim_create_buf(false, true)
@@ -280,9 +270,8 @@ local function create_rail_buffer()
   return bufnr
 end
 
----Apply minimal window options and fixed sizing to a rail window.
+--- Apply minimal window options and fixed sizing to a rail window.
 ---@param winid integer
----@return nil
 local function configure_rail_window(winid)
   vim.wo[winid].winhl = 'Normal:Normal'
   vim.wo[winid].wrap = false
@@ -312,7 +301,7 @@ local function ensure_state(tabpage)
   return state
 end
 
----Group statusline entries into configured top, middle, and bottom sections.
+--- Group statusline entries into configured top, middle, and bottom sections.
 ---@param entries Layout.Statusline.Entry[]
 ---@return table<string, Layout.Statusline.Entry[]>
 local function collect_sections(entries)
@@ -325,7 +314,7 @@ local function collect_sections(entries)
   return sections
 end
 
----Calculate each section's ideal starting line.
+--- Calculate each section's ideal starting line.
 ---@param sections table<string, Layout.Statusline.Entry[]>
 ---@param height integer
 ---@return table<string, integer>
@@ -337,7 +326,7 @@ local function section_starts(sections, height)
   }
 end
 
----Return whether ideal section ranges cannot fit without intersecting.
+--- Return whether ideal section ranges cannot fit without intersecting.
 ---@param sections table<string, Layout.Statusline.Entry[]>
 ---@param starts table<string, integer>
 ---@param height integer
@@ -355,7 +344,7 @@ local function sections_overlap(sections, starts, height)
   return false
 end
 
----Pack all sections contiguously when their ideal ranges overlap.
+--- Pack all sections contiguously when their ideal ranges overlap.
 ---@param sections table<string, Layout.Statusline.Entry[]>
 ---@return string[] lines
 ---@return table<integer, Layout.Statusline.Entry> entries_by_line
@@ -371,7 +360,7 @@ local function pack_sections(sections)
   return lines, entries_by_line
 end
 
----Place sections at their top, middle, and bottom anchors.
+--- Place sections at their top, middle, and bottom anchors.
 ---@param sections table<string, Layout.Statusline.Entry[]>
 ---@param starts table<string, integer>
 ---@param height integer
@@ -393,9 +382,9 @@ local function anchor_sections(sections, starts, height)
   return lines, entries_by_line
 end
 
----Place selected panel entries into top, middle, and bottom rail sections.
----When ideal section ranges overlap, all entries are packed from the top.
----Return whether any entry belongs to a side selected by the rail.
+--- Place selected panel entries into top, middle, and bottom rail sections.
+--- When ideal section ranges overlap, all entries are packed from the top.
+--- Return whether any entry belongs to a side selected by the rail.
 ---@param entries Layout.Statusline.Entry[]
 ---@param height integer
 ---@return string[] lines
@@ -420,12 +409,10 @@ local function has_selected_entries(entries, groups)
   end)
 end
 
----Replace rail buffer contents and apply entry highlights.
+--- Replace rail buffer contents and apply entry highlights.
 ---@param state Layout.Feature.Rail.State
 ---@param lines string[]
 ---@param tabpage integer
----Close every rail window and buffer across tabpages.
----@return nil
 local function write_state(state, lines, tabpage)
   vim.bo[state.bufnr].modifiable = true
   vim.api.nvim_buf_set_lines(state.bufnr, 0, -1, false, lines)
@@ -440,9 +427,8 @@ local function write_state(state, lines, tabpage)
   end
 end
 
----Render current group state into the active tabpage rail.
+--- Render current group state into the active tabpage rail.
 ---@public
----@return nil
 function Rail:render()
   if not self.opts or not self.opts.enabled then return end
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -458,10 +444,9 @@ function Rail:render()
   write_state(state, lines, tabpage)
 end
 
----Update the highlighted rail entry from a mouse position.
+--- Update the highlighted rail entry from a mouse position.
 ---@public
 ---@param mouse { winid: integer, line: integer }
----@return nil
 function Rail:update_hover(mouse)
   if not self.opts or not self.opts.enabled or not self.opts.hover then return end
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -472,9 +457,8 @@ function Rail:update_hover(mouse)
   if state and vim.api.nvim_win_is_valid(state.winid) then self:render() end
 end
 
----Reposition and redraw the active tabpage rail.
+--- Reposition and redraw the active tabpage rail.
 ---@public
----@return nil
 function Rail:refresh()
   if not self.opts or not self.opts.enabled then return end
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -486,7 +470,7 @@ function Rail:refresh()
   if self.opts.mode == 'buffer' then require('layout.entities.panel'):arrange() end
 end
 
----Toggle runtime rail visibility globally.
+--- Toggle runtime rail visibility globally.
 ---@public
 ---@return boolean enabled Whether the rail is visible after toggling.
 function Rail:toggle()
@@ -505,7 +489,7 @@ function Rail:toggle()
   return true
 end
 
----Return the active buffer rail as an outer placement slot.
+--- Return the active buffer rail as an outer placement slot.
 ---@public
 ---@return Placement.Rail?
 function Rail:placement_spec()
@@ -519,10 +503,9 @@ function Rail:placement_spec()
   }
 end
 
----Dispatch a rail row through the statusline's existing click map.
+--- Dispatch a rail row through the statusline's existing click map.
 ---@public
 ---@param line integer
----@return nil
 function Rail:on_click(line)
   if not self.clickable then return end
   local state = self.state[vim.api.nvim_get_current_tabpage()]
@@ -534,17 +517,16 @@ function Rail:on_click(line)
   end)
 end
 
----@return nil
+--- Close every rail window and buffer across tabpages.
 local function close_all_states()
   for _, tabpage in ipairs(vim.tbl_keys(Rail.state)) do
     close_state(tabpage)
   end
 end
 
----Recreate rail state after setup unless a newer setup supersedes it.
+--- Recreate rail state after setup unless a newer setup supersedes it.
 ---@param generation integer
----Schedule a render or full refresh after window lifecycle events.
----@return nil
+--- Schedule a render or full refresh after window lifecycle events.
 local function schedule_state_reset(generation)
   vim.schedule(function()
     if Rail.setup_generation ~= generation then return end
@@ -553,8 +535,7 @@ local function schedule_state_reset(generation)
   end)
 end
 
----Track the latest editor window and reject focus entering buffer rails.
----@return nil
+--- Track the latest editor window and reject focus entering buffer rails.
 local function schedule_content_refresh()
   vim.schedule(function()
     if Rail.opts and Rail.opts.mode == 'buffer' then
@@ -565,8 +546,7 @@ local function schedule_content_refresh()
   end)
 end
 
----Discard state associated with closed tabpages.
----@return nil
+--- Discard state associated with closed tabpages.
 local function track_entered_window()
   local tabpage = vim.api.nvim_get_current_tabpage()
   local winid = vim.api.nvim_get_current_win()
@@ -578,7 +558,6 @@ local function track_entered_window()
   end
 end
 
----@return nil
 local function prune_closed_tabs()
   for tabpage in pairs(Rail.state) do
     if not vim.api.nvim_tabpage_is_valid(tabpage) then
@@ -588,9 +567,8 @@ local function prune_closed_tabs()
   end
 end
 
----Register rail rendering, focus, resize, and tab lifecycle hooks.
+--- Register rail rendering, focus, resize, and tab lifecycle hooks.
 ---@param augroup integer
----@return nil
 local function wire_lifecycle_autocmds(augroup)
   vim.api.nvim_create_autocmd({ 'BufWinEnter', 'WinClosed' }, {
     group = augroup,
@@ -614,12 +592,11 @@ local function wire_lifecycle_autocmds(augroup)
   })
 end
 
----Initialize rail options and lifecycle autocommands.
+--- Initialize rail options and lifecycle autocommands.
 ---@public
 ---@param opts Layout.Statusline.Rail.Opts
 ---@param clickable boolean
 ---@param pick_key_pose Layout.Statusline.PickKeyPose
----@return nil
 function Rail:setup(opts, clickable, pick_key_pose)
   disable_interactions()
   self.opts = vim.deepcopy(opts)

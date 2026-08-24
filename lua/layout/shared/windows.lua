@@ -1,9 +1,9 @@
----Shared normal-window topology helpers.
+--- Shared normal-window topology helpers.
 
 ---@class Layout.Shared.Windows
 local Windows = {}
 
----Return the non-floating window set for a tabpage.
+--- Return the non-floating window set for a tabpage.
 ---@public
 ---@param tabpage? integer
 ---@return table<integer, boolean>
@@ -16,7 +16,7 @@ function Windows.normal_set(tabpage)
   return windows
 end
 
----Return whether two window sets contain the same handles.
+--- Return whether two window sets contain the same handles.
 ---@public
 ---@param left table<integer, boolean>
 ---@param right table<integer, boolean>

@@ -74,7 +74,7 @@ local function resized_windows()
   return event.windows
 end
 
----Run one pending arrangement if its tabpage is current and not resizing.
+--- Run one pending arrangement if its tabpage is current and not resizing.
 ---@param tabpage integer
 local function run_pending_arrange(tabpage)
   local session = session_for(tabpage)
@@ -100,7 +100,7 @@ local function run_pending_arrange(tabpage)
   end
 end
 
----Return the configured event triggers, falling back to FileType.
+--- Return the configured event triggers, falling back to FileType.
 ---@private
 ---@return string[]
 function Autocmds:events_from_config()
@@ -108,10 +108,10 @@ function Autocmds:events_from_config()
   return { 'FileType' }
 end
 
----Request automatic placement, coalescing requests per tabpage.
+--- Request automatic placement, coalescing requests per tabpage.
 ---
----Synchronous requests run immediately unless a resize stream is active. All
----requests made during resizing remain pending and run once after quiet time.
+--- Synchronous requests run immediately unless a resize stream is active. All
+--- requests made during resizing remain pending and run once after quiet time.
 ---@private
 ---@param delay? integer
 ---@param synchronous? boolean
@@ -138,7 +138,7 @@ function Autocmds:schedule_arrange(delay, synchronous)
   end, delay ~= nil and delay or 50)
 end
 
----Mark a user resize stream active and restart its quiet-period timer.
+--- Mark a user resize stream active and restart its quiet-period timer.
 ---@param tabpage integer
 local function continue_resize(tabpage)
   local session = session_for(tabpage)
@@ -158,7 +158,7 @@ local function continue_resize(tabpage)
   end, resize_delay())
 end
 
----Stop timers for a tab while preserving whether arrangement is pending.
+--- Stop timers for a tab while preserving whether arrangement is pending.
 ---@param tabpage integer
 local function suspend_tab(tabpage)
   local session = session_for(tabpage)
@@ -171,7 +171,7 @@ local function suspend_tab(tabpage)
   session.resize_active = false
 end
 
----Remove timer state belonging to closed tabpages.
+--- Remove timer state belonging to closed tabpages.
 local function prune_tabs()
   for tabpage, session in pairs(Autocmds.sessions) do
     if not vim.api.nvim_tabpage_is_valid(tabpage) then
@@ -183,7 +183,7 @@ local function prune_tabs()
   Size:prune_tabs()
 end
 
----Initialize and wire autocommands.
+--- Initialize and wire autocommands.
 ---@public
 ---@param registry Layout.Registry
 ---@param config Layout.Config
@@ -198,7 +198,7 @@ function Autocmds:setup(registry, config)
   self:wire()
 end
 
----Create the plugin autocommand group.
+--- Create the plugin autocommand group.
 ---@package
 function Autocmds:wire()
   if self.augroup then pcall(vim.api.nvim_del_augroup_by_id, self.augroup) end

@@ -1,4 +1,4 @@
----BDD tests for user-command group resolution.
+--- BDD tests for user-command group resolution.
 
 local MiniTest = require('mini.test')
 local U = require('tests.util')

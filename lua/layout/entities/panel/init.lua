@@ -50,7 +50,7 @@ local Panel = {
   rail = nil,
 }
 
----Separate slots with persisted keys from slots that still need assignment.
+--- Separate slots with persisted keys from slots that still need assignment.
 ---@param raw Layout.Entity.Panel.RawSlot[]
 ---@return Layout.Entity.Panel.RawSlotKeys
 local function partition_slot_keys(raw)
@@ -61,7 +61,7 @@ local function partition_slot_keys(raw)
   end)
 end
 
----Count windows sharing each group and view identity.
+--- Count windows sharing each group and view identity.
 ---@param raw Layout.Entity.Panel.RawSlot[]
 ---@return table<string, integer>
 local function count_slot_identities(raw)
@@ -72,7 +72,7 @@ local function count_slot_identities(raw)
   end)
 end
 
----Find the highest persisted occurrence index for each view identity.
+--- Find the highest persisted occurrence index for each view identity.
 ---@param slots Layout.Entity.Panel.RawSlot[]
 ---@return table<string, integer>
 local function indexed_slot_maxima(slots)
@@ -84,12 +84,11 @@ local function indexed_slot_maxima(slots)
   end)
 end
 
----Assign stable keys to slots that do not already have one.
+--- Assign stable keys to slots that do not already have one.
 ---@param side Layout.Side
 ---@param slots Layout.Entity.Panel.RawSlot[]
 ---@param counts table<string, integer>
 ---@param maxima table<string, integer>
----@return nil
 local function assign_slot_keys(side, slots, counts, maxima)
   for _, item in ipairs(slots) do
     local identity = item.gname .. '\0' .. item.vname
@@ -104,7 +103,7 @@ local function assign_slot_keys(side, slots, counts, maxima)
   end
 end
 
----Convert scanned windows into placement slots with resolved sizes.
+--- Convert scanned windows into placement slots with resolved sizes.
 ---@param raw Layout.Entity.Panel.RawSlot[]
 ---@return Layout.Entity.Panel.Slot[]
 local function materialize_slots(raw)
@@ -123,7 +122,7 @@ local function materialize_slots(raw)
     :totable()
 end
 
----Build a comparator that follows configured group and view order.
+--- Build a comparator that follows configured group and view order.
 ---@param order Layout.Entity.Panel.Order
 ---@return fun(left: Layout.Entity.Panel.Slot, right: Layout.Entity.Panel.Slot): boolean
 local function slot_comparator(order)
@@ -159,7 +158,7 @@ local function finalize_side_slots(side, raw, order)
   return slots
 end
 
----Classify normal tabpage windows into raw panel slots.
+--- Classify normal tabpage windows into raw panel slots.
 ---@param wins integer[]
 ---@param presumed? Layout.Entity.Panel.Presumed
 ---@return table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
@@ -189,7 +188,7 @@ local function collect_raw_slots(wins, presumed)
   return raw
 end
 
----Build configured group and view position maps for each side.
+--- Build configured group and view position maps for each side.
 ---@param registry Layout.Registry
 ---@return table<Layout.Side, Layout.Entity.Panel.Order>
 local function build_order_maps(registry)
@@ -211,7 +210,7 @@ local function build_order_maps(registry)
   return maps
 end
 
----Finalize scanned slots for every panel side.
+--- Finalize scanned slots for every panel side.
 ---@param raw table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
 ---@param order_maps table<Layout.Side, Layout.Entity.Panel.Order>
 ---@return table<Layout.Side, Layout.Entity.Panel.Slot[]>
@@ -223,9 +222,9 @@ local function build_side_slots(raw, order_maps)
   return slots
 end
 
----Build placement regions from configured panel sizes and active slots.
+--- Build placement regions from configured panel sizes and active slots.
+--- Persist stable keys and public buffer metadata after placement.
 ---@param registry Layout.Registry
----Persist stable keys and public buffer metadata after placement.
 ---@param side_slots table<Layout.Side, Layout.Entity.Panel.Slot[]>
 ---@return table<Layout.Side, Placement.Region>
 local function build_regions(registry, side_slots)
@@ -242,7 +241,6 @@ local function build_regions(registry, side_slots)
 end
 
 ---@param side_slots table<Layout.Side, Layout.Entity.Panel.Slot[]>
----@return nil
 local function record_slot_metadata(side_slots)
   for _, side in ipairs(Constants.sides) do
     for _, slot in ipairs(side_slots[side]) do
@@ -267,14 +265,14 @@ function Panel:set_registry(registry)
   self.registry = registry
 end
 
----Set the rail provider used to reserve buffer-mode rails during placement.
+--- Set the rail provider used to reserve buffer-mode rails during placement.
 ---@public
 ---@param rail Layout.Feature.Rail
 function Panel:set_rail(rail)
   self.rail = rail
 end
 
----Build and place the current tabpage panel layout.
+--- Build and place the current tabpage panel layout.
 ---@private
 ---@param registry Layout.Registry
 ---@param presumed? Layout.Entity.Panel.Presumed
@@ -306,16 +304,15 @@ local function arrange(registry, presumed)
   return true
 end
 
----Scan the current tabpage and transactionally apply its panel layout.
+--- Scan the current tabpage and transactionally apply its panel layout.
 ---
----Stable user geometry is captured before placement locks resize observation.
----Successful placement commits expected dimensions; failure always releases
----the lock while preserving dirty topology for a later retry.
+--- Stable user geometry is captured before placement locks resize observation.
+--- Successful placement commits expected dimensions; failure always releases
+--- the lock while preserving dirty topology for a later retry.
 ---
 ---@public
 ---@param registry? Layout.Registry
 ---@param presumed? Layout.Entity.Panel.Presumed
----@return nil
 function Panel:arrange(registry, presumed)
   registry = registry or self.registry
   if vim.fn.getcmdwintype() ~= '' or vim.v.exiting ~= vim.NIL then

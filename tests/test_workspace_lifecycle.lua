@@ -1,4 +1,4 @@
----BDD tests for automatic workspace persistence lifecycle.
+--- BDD tests for automatic workspace persistence lifecycle.
 
 local MiniTest = require('mini.test')
 local expect = MiniTest.expect
