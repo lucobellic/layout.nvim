@@ -109,8 +109,10 @@ end
 
 --- Build the cache of per-side group display lines.
 --- Assigns a global sequential minwid for click dispatch.
---- Groups missing either icon or key are excluded.
+--- Groups without icons are excluded. A missing key disables keyboard picking
+--- for that entry while still allowing statusline and rail rendering.
 ---@private
+---@return nil
 function Statusline:build_cache()
   self.cache = {}
   self.click_map = {}
@@ -119,13 +121,13 @@ function Statusline:build_cache()
     self.cache[side] = vim.iter(Group:list(side)):fold({}, function(lines, gname)
       local gdesc = Group:get(side, gname)
       if not gdesc then return lines end
-      if not gdesc.icon or gdesc.icon == '' or not gdesc.key or gdesc.key == '' then return lines end
+      if not gdesc.icon or gdesc.icon == '' then return lines end
       minwid = minwid + 1
       self.click_map[minwid] = { side = side, name = gname }
       lines[#lines + 1] = {
         name = gname,
         icon = gdesc.icon,
-        key = gdesc.key,
+        key = gdesc.key or '',
         minwid = minwid,
       }
       return lines
@@ -143,6 +145,8 @@ function Statusline:setup(registry, opts)
   self:build_pick_lines()
 end
 
+---@private
+---@return nil
 function Statusline:build_pick_lines()
   self.pick_lines = {
     left = function(pick, sep_hl, icon_hl, line)
@@ -223,7 +227,7 @@ function Statusline:build_line(side, index, line, active)
 
   local pose = self.opts.pick_key_pose
   local build = self.pick_lines[pose] or self.pick_lines[PickPose.kind(pose)]
-  return build(pick, sep_hl, icon_hl, line)
+  return click_prefix .. build(pick, sep_hl, icon_hl, line) .. click_suffix
 end
 
 --- Return a list of statusline strings for the given side, one per group.
@@ -234,6 +238,14 @@ end
 ---@return string[]
 function Statusline:get_statusline(side)
   local lines = self.cache[side] or {}
+  if self.pick_mode then
+    lines = vim
+      .iter(lines)
+      :filter(function(line)
+        return line.key ~= ''
+      end)
+      :totable()
+  end
   if #lines == 0 then return {} end
 
   local active = compute_active()

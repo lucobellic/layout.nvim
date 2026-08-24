@@ -72,6 +72,82 @@ describe('floating icon rail', function()
     expect.equality(child.fn.winlayout()[1], 'leaf')
   end)
 
+  it('shows icon-only groups that do not participate in keyboard picking', function()
+    -- Given: a rail group has an icon but intentionally has no picker key
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          explorer = { picker = { icon = 'E' }, views = {} },
+        },
+      },
+    })
+    cfg.statusline = { rail = { enabled = true, groups = { top = 'left' } } }
+
+    -- When: the rail is rendered
+    child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
+    wait_for_rail()
+
+    -- Then: the configured icon is visible even without a key
+    local rail = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]]=])
+    expect.equality(child.api.nvim_buf_get_lines(rail.bufnr, 0, 1, false), { 'E' })
+  end)
+
+  it('does not render text wider than the configured rail', function()
+    -- Given: a two-column glyph is configured in a one-column rail
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          explorer = { picker = { icon = '界', key = 'e' }, views = {} },
+        },
+      },
+    })
+    cfg.statusline = { rail = { enabled = true, width = 1, groups = { top = 'left' } } }
+
+    -- When: the rail is rendered
+    child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
+    wait_for_rail()
+
+    -- Then: its buffer content fits the window display width
+    local width = child.lua_get([[(function()
+      local rail = require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]
+      return vim.fn.strdisplaywidth(vim.api.nvim_buf_get_lines(rail.bufnr, 0, 1, false)[1])
+    end)()]])
+    expect.equality(width <= 1, true)
+  end)
+
+  it('leaves user mouse settings untouched while disabled', function()
+    -- Given: the user owns the global mouse mapping and mousemove option
+    child.cmd([[nnoremap <LeftMouse> <Cmd>let g:user_mouse = 1<CR>]])
+    child.o.mousemoveevent = false
+    local before = child.fn.maparg('<LeftMouse>', 'n')
+
+    -- When: layout is configured with its default disabled rail
+    child.lua([[require('layout').setup({ statusline = { rail = { enabled = false } } })]])
+
+    -- Then: setup did not install global rail interaction hooks
+    expect.equality(child.fn.maparg('<LeftMouse>', 'n'), before)
+    expect.equality(child.o.mousemoveevent, false)
+  end)
+
+  it('restores mouse settings when a hoverable rail is disabled', function()
+    -- Given: rail setup temporarily enabled click interception and mouse movement
+    child.cmd([[nnoremap <LeftMouse> <Cmd>let g:user_mouse = 1<CR>]])
+    child.o.mousemoveevent = false
+    local before = child.fn.maparg('<LeftMouse>', 'n')
+    child.lua([[
+      require('layout').setup({
+        statusline = { rail = { enabled = true, hover = true, groups = {} } },
+      })
+    ]])
+
+    -- When: setup is repeated with the rail disabled
+    child.lua([[require('layout').setup({ statusline = { rail = { enabled = false } } })]])
+
+    -- Then: the user's mapping and original option value are restored
+    expect.equality(child.fn.maparg('<LeftMouse>', 'n'), before)
+    expect.equality(child.o.mousemoveevent, false)
+  end)
+
   it('aligns the rail to the far right after the editor is resized', function()
     -- Given: a right-aligned rail
     local cfg = U.test_config({
@@ -98,9 +174,15 @@ describe('floating icon rail', function()
 
   local pick_pose_text = {
     left = { text = 'eE', highlights = { { 0, 1, 'LayoutPickInactiveLeft1' }, { 1, 2, 'LayoutInactiveLeft1' } } },
-    left_separator = { text = 'eE', highlights = { { 0, 1, 'LayoutPickInactiveLeft1' }, { 1, 2, 'LayoutInactiveLeft1' } } },
+    left_separator = {
+      text = 'eE',
+      highlights = { { 0, 1, 'LayoutPickInactiveLeft1' }, { 1, 2, 'LayoutInactiveLeft1' } },
+    },
     right = { text = 'Ee', highlights = { { 0, 1, 'LayoutInactiveLeft1' }, { 1, 2, 'LayoutPickInactiveLeft1' } } },
-    right_separator = { text = 'Ee', highlights = { { 0, 1, 'LayoutInactiveLeft1' }, { 1, 2, 'LayoutPickInactiveLeft1' } } },
+    right_separator = {
+      text = 'Ee',
+      highlights = { { 0, 1, 'LayoutInactiveLeft1' }, { 1, 2, 'LayoutPickInactiveLeft1' } },
+    },
     icon = { text = 'e', highlights = { { 0, 1, 'LayoutPickInactiveLeft1' } } },
   }
 
@@ -470,10 +552,14 @@ describe('buffer icon rail', function()
   it('highlights an icon while hovered and restores it when the mouse leaves', function()
     -- Given: a buffer rail with one inactive icon and mouse movement reporting
     local cfg = U.test_config({
-      left = { groups = { explorer = {
-        picker = { icon = 'E', key = 'e' },
-        views = { filesystem = { filter = 'leftft', open = 'belowright split' } },
-      } } },
+      left = {
+        groups = {
+          explorer = {
+            picker = { icon = 'E', key = 'e' },
+            views = { filesystem = { filter = 'leftft', open = 'belowright split' } },
+          },
+        },
+      },
     })
     cfg.statusline = {
       rail = { enabled = true, hover = true, mode = 'buffer', position = 'left', groups = { top = 'left' } },
@@ -535,7 +621,8 @@ describe('buffer icon rail', function()
     }
     child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
     wait_for_rail()
-    local original = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()].winid]=])
+    local original =
+      child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()].winid]=])
 
     -- When: the user closes the rail window
     child.api.nvim_win_close(original, true)
@@ -562,22 +649,37 @@ describe('buffer icon rail', function()
       local cfg = U.test_config({
         left = {
           size = 20,
-          groups = { left = { picker = { icon = 'L', key = 'l' }, views = {
-            view = { filter = 'railleft', open = 'echo' },
-          } } },
+          groups = {
+            left = {
+              picker = { icon = 'L', key = 'l' },
+              views = {
+                view = { filter = 'railleft', open = 'echo' },
+              },
+            },
+          },
         },
         right = {
           size = 20,
-          groups = { right = { picker = { icon = 'R', key = 'r' }, views = {
-            view = { filter = 'railright', open = 'echo' },
-          } } },
+          groups = {
+            right = {
+              picker = { icon = 'R', key = 'r' },
+              views = {
+                view = { filter = 'railright', open = 'echo' },
+              },
+            },
+          },
         },
         bottom = {
           size = 8,
           align = align,
-          groups = { bottom = { picker = { icon = 'B', key = 'b' }, views = {
-            view = { filter = 'railbottom', open = 'echo' },
-          } } },
+          groups = {
+            bottom = {
+              picker = { icon = 'B', key = 'b' },
+              views = {
+                view = { filter = 'railbottom', open = 'echo' },
+              },
+            },
+          },
         },
       })
       cfg.statusline = {

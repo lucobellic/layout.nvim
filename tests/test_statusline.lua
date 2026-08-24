@@ -21,7 +21,15 @@ describe('shared.ui', function()
 
   after_each(function()
     -- clean up highlight groups so they don't leak into other tests
-    for _, cat in ipairs({ 'Active', 'Inactive', 'Hover', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }) do
+    for _, cat in ipairs({
+      'Active',
+      'Inactive',
+      'Hover',
+      'PickActive',
+      'PickInactive',
+      'SeparatorActive',
+      'SeparatorInactive',
+    }) do
       pcall(vim.api.nvim_set_hl, 0, 'Layout' .. cat, {})
       for _, pos in ipairs({ 'Left', 'Right', 'Bottom' }) do
         pcall(vim.api.nvim_set_hl, 0, 'Layout' .. cat .. pos, {})
@@ -85,9 +93,13 @@ describe('shared.ui', function()
   it('creates per-entry hover groups linked to the configured hover color', function()
     -- Given: a custom hover color and one left-side group
     local colors = {
-      active = 'Normal', inactive = 'Comment', hover = 'Visual',
-      pick_active = 'PmenuSel', pick_inactive = 'PmenuSel',
-      separator_active = 'Normal', separator_inactive = 'Comment',
+      active = 'Normal',
+      inactive = 'Comment',
+      hover = 'Visual',
+      pick_active = 'PmenuSel',
+      pick_inactive = 'PmenuSel',
+      separator_active = 'Normal',
+      separator_inactive = 'Comment',
     }
 
     -- When: statusline highlights are created
@@ -129,7 +141,15 @@ describe('shared.ui', function()
     }
     ui.setup_statusline_highlights({ left = 0, right = 0, bottom = 0 }, colors)
 
-    for _, cat in ipairs({ 'Active', 'Inactive', 'Hover', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }) do
+    for _, cat in ipairs({
+      'Active',
+      'Inactive',
+      'Hover',
+      'PickActive',
+      'PickInactive',
+      'SeparatorActive',
+      'SeparatorInactive',
+    }) do
       local hl = vim.api.nvim_get_hl(0, { name = 'Layout' .. cat, link = true })
       expect.equality(hl.link, 'Pmenu')
     end
@@ -423,6 +443,32 @@ describe('features.statusline', function()
       ]]))
       local stl = child.lua_get('_G._stl')
       expect.equality(stl[1]:match('e') ~= nil, true)
+    end)
+
+    it('keeps clickable regions around entries in pick mode', function()
+      -- Given: a clickable statusline entry while picker keys are visible
+      local cfg = U.test_config({
+        left = {
+          groups = {
+            explorer = { picker = { icon = 'E', key = 'e' }, views = {} },
+          },
+        },
+      })
+      U.setup_config(child, cfg)
+      child.lua([[
+        local resolved = require('layout.shared.config').merge(_G._c)
+        resolved.statusline.clickable = true
+        require('layout.features.statusline'):setup(_G._reg, resolved.statusline)
+        require('layout.features.statusline').pick_mode = true
+        _G._pick_line = require('layout.features.statusline'):get_statusline('left')[1]
+      ]])
+
+      -- When: the picker-mode line is rendered
+      local line = child.lua_get([[_G._pick_line]])
+
+      -- Then: the icon and key remain inside the click target
+      expect.equality(line:match("@v:lua.require'layout%.features%.statusline'%.on_click@") ~= nil, true)
+      expect.equality(line:sub(-2), '%T')
     end)
 
     it('filters out groups without both icon and key', function()

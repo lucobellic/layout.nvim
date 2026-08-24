@@ -20,7 +20,9 @@ local HIGHLIGHT_NS = vim.api.nvim_create_namespace('LayoutRailHighlights')
 ---@field state table<integer, Layout.Feature.Rail.State> Rail state keyed by tabpage.
 ---@field last_win table<integer, integer> Last non-rail window keyed by tabpage.
 ---@field mouse_mapping boolean Whether the global mouse interceptor is installed.
+---@field saved_mouse_mappings table<string, table> User mappings replaced by the interceptor.
 ---@field mousemove_ns integer? Namespace used to observe mouse movement.
+---@field mousemove_original boolean? Option value to restore when hover handling stops.
 ---@field hover_line table<integer, integer> Hovered entry line keyed by tabpage.
 local Rail = {
   opts = nil,
@@ -31,7 +33,9 @@ local Rail = {
   state = {},
   last_win = {},
   mouse_mapping = false,
+  saved_mouse_mappings = {},
   mousemove_ns = nil,
+  mousemove_original = nil,
   hover_line = {},
 }
 
@@ -51,11 +55,27 @@ end
 ---@return nil
 local function add_highlight(bufnr, line, group, start_col, end_col)
   if not group then return end
+  local text = vim.api.nvim_buf_get_lines(bufnr, line - 1, line, false)[1] or ''
+  if start_col >= #text then return end
+  if end_col >= 0 then end_col = math.min(end_col, #text) end
   vim.api.nvim_buf_set_extmark(bufnr, HIGHLIGHT_NS, line - 1, start_col, {
     end_col = end_col >= 0 and end_col or nil,
     hl_eol = end_col < 0,
     hl_group = group,
   })
+end
+
+---@param text string
+---@param width integer
+---@return string
+local function fit_display_width(text, width)
+  local result = ''
+  for index = 0, vim.fn.strchars(text) - 1 do
+    local char = vim.fn.strcharpart(text, index, 1)
+    if vim.fn.strdisplaywidth(result .. char) > width then break end
+    result = result .. char
+  end
+  return result
 end
 
 ---@param bufnr integer
@@ -98,7 +118,8 @@ local function entry_text(entry)
       text = entry.icon .. entry.key
     end
   end
-  return string.rep(' ', padding) .. text
+  local width = Rail.opts and Rail.opts.width or 1
+  return fit_display_width(string.rep(' ', padding) .. text, width)
 end
 
 ---@param tabpage integer
@@ -150,12 +171,29 @@ end
 local function ensure_mouse_mapping()
   if Rail.mouse_mapping then return end
   Rail.mouse_mapping = true
+  Rail.saved_mouse_mappings = {}
+  for _, mode in ipairs({ 'n', 'x', 'o', 'i' }) do
+    local mapping = vim.fn.maparg('<LeftMouse>', mode, false, true)
+    if type(mapping) == 'table' and next(mapping) then Rail.saved_mouse_mappings[mode] = mapping end
+  end
   vim.keymap.set({ 'n', 'x', 'o', 'i' }, '<LeftMouse>', handle_left_mouse, {
     expr = true,
     silent = true,
     replace_keycodes = true,
     desc = 'Dispatch clicks on the layout rail',
   })
+end
+
+---@return nil
+local function remove_mouse_mapping()
+  if not Rail.mouse_mapping then return end
+  for _, mode in ipairs({ 'n', 'x', 'o', 'i' }) do
+    pcall(vim.keymap.del, mode, '<LeftMouse>')
+    local mapping = Rail.saved_mouse_mappings[mode]
+    if mapping then pcall(vim.fn.mapset, mode, false, mapping) end
+  end
+  Rail.saved_mouse_mappings = {}
+  Rail.mouse_mapping = false
 end
 
 ---@return nil
@@ -168,6 +206,30 @@ local function ensure_mousemove_listener()
       Rail:update_hover(vim.fn.getmousepos())
     end)
   end, Rail.mousemove_ns)
+end
+
+---@return nil
+local function disable_mousemove_listener()
+  if Rail.mousemove_ns then vim.on_key(nil, Rail.mousemove_ns) end
+  Rail.mousemove_ns = nil
+  if Rail.mousemove_original ~= nil then vim.o.mousemoveevent = Rail.mousemove_original end
+  Rail.mousemove_original = nil
+end
+
+---@return nil
+local function enable_interactions()
+  if Rail.clickable then ensure_mouse_mapping() end
+  if Rail.opts and Rail.opts.hover then
+    Rail.mousemove_original = vim.o.mousemoveevent
+    vim.o.mousemoveevent = true
+    ensure_mousemove_listener()
+  end
+end
+
+---@return nil
+local function disable_interactions()
+  remove_mouse_mapping()
+  disable_mousemove_listener()
 end
 
 ---@return vim.api.keyset.win_config
@@ -357,12 +419,14 @@ function Rail:toggle()
   if not self.opts then return false end
   self.opts.enabled = not self.opts.enabled
   if not self.opts.enabled then
+    disable_interactions()
     for _, tabpage in ipairs(vim.tbl_keys(self.state)) do
       close_state(tabpage)
     end
     return false
   end
 
+  enable_interactions()
   self:refresh()
   return true
 end
@@ -403,14 +467,13 @@ end
 ---@param pick_key_pose Layout.Statusline.PickKeyPose
 ---@return nil
 function Rail:setup(opts, clickable, pick_key_pose)
+  disable_interactions()
   self.opts = vim.deepcopy(opts)
   self.clickable = clickable
   self.pick_key_pose = pick_key_pose
   self.setup_generation = self.setup_generation + 1
   self.last_win = {}
-  ensure_mouse_mapping()
-  ensure_mousemove_listener()
-  if opts.enabled and opts.hover then vim.o.mousemoveevent = true end
+  if opts.enabled then enable_interactions() end
   local generation = self.setup_generation
 
   if self.augroup then pcall(vim.api.nvim_del_augroup_by_id, self.augroup) end
