@@ -7,6 +7,23 @@ local lib = require('layout.shared.lib')
 ---@class Layout.Shared.Store
 local Store = {}
 
+---@class Layout.Workspace.State
+---@field cwd? string
+---@field sides table<Layout.Side, table<string, boolean|table<string|integer, boolean|string>>>
+
+---@param state any
+---@return boolean
+local function valid_state(state)
+  if type(state) ~= 'table' or type(state.sides) ~= 'table' then return false end
+  for side, groups in pairs(state.sides) do
+    if (side ~= 'left' and side ~= 'right' and side ~= 'bottom') or type(groups) ~= 'table' then return false end
+    for group_name, views in pairs(groups) do
+      if type(group_name) ~= 'string' or (views ~= true and type(views) ~= 'table') then return false end
+    end
+  end
+  return true
+end
+
 --- Resolve the file path for a given cwd and config.
 ---@private
 ---@param config Layout.Config
@@ -41,7 +58,7 @@ end
 ---@public
 ---@param config Layout.Config
 ---@param cwd? string
----@return table?
+---@return Layout.Workspace.State?
 function Store.load(config, cwd)
   cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
@@ -53,7 +70,7 @@ function Store.load(config, cwd)
     return nil
   end
   local ok, state = pcall(vim.json.decode, table.concat(lines, '\n'))
-  if not ok then
+  if not ok or not valid_state(state) then
     return nil
   end
   return state

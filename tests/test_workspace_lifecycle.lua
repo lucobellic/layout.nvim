@@ -82,5 +82,6 @@ describe('workspace lifecycle', function()
     ]]),
       true
     )
+    expect.equality(child.lua_get([[vim.iter(require('layout.entities.view'):iter_matches()):count()]]), 0)
   end)
 end)

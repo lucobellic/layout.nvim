@@ -12,18 +12,36 @@ local Group = require('layout.entities.group')
 local Constants = require('layout.shared.constants')
 
 --- Restore workspace state from disk.
---- Reopens groups that were previously open.
+--- Replaces configured groups with their previously saved views.
 ---@public
 ---@param config Layout.Config
-function Restore.restore(config)
+---@param clear_missing? boolean Close configured groups when no snapshot exists.
+function Restore.restore(config, clear_missing)
   local state = Store.load(config)
-  if not state or not state.sides then return end
+  if not state then
+    if clear_missing then
+      vim.iter(Constants.sides):each(function(side)
+        Toggle.close_panel(side)
+      end)
+    end
+    return
+  end
 
   vim.iter(Constants.sides):each(function(side)
     local saved = state.sides[side] or {}
     for _, gname in ipairs(Group:list(side)) do
-      if saved[gname] then
-        Toggle.open_group(side, gname)
+      Toggle.close_group(side, gname)
+      local group_state = saved[gname]
+      if group_state then
+        local selected = nil
+        if type(group_state) == 'table' then
+          selected = {}
+          for key, value in pairs(group_state) do
+            if type(key) == 'string' and value == true then selected[key] = true end
+            if type(key) == 'number' and type(value) == 'string' then selected[value] = true end
+          end
+        end
+        Toggle.open_group(side, gname, selected)
       end
     end
   end)

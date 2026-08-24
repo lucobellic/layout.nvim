@@ -2,7 +2,7 @@
 --- Toggle a group or panel — open or close tool windows.
 ---
 --- `toggle_group(side, group_name)`: if open → close; if closed → open.
---- `toggle_panel(side)`: toggle all groups on a side.
+--- `open_panel(side)` / `close_panel(side)`: operate on all groups on a side.
 
 local Group = require('layout.entities.group')
 local Panel = require('layout.entities.panel')
@@ -113,7 +113,8 @@ end
 ---@public
 ---@param side Layout.Side
 ---@param group_name string
-function Toggle.open_group(side, group_name)
+---@param selected? table<string, boolean> View names to open; nil opens the whole group.
+function Toggle.open_group(side, group_name, selected)
   local gdesc = Group:get(side, group_name)
   if not gdesc then return end
   ViewState:save()
@@ -121,6 +122,7 @@ function Toggle.open_group(side, group_name)
   ---@type Layout.Entity.Panel.Presumed
   local presumed = {}
   vim.iter(views):each(function(v)
+    if selected and not selected[v.name] then return end
     local created = windows_created_by(function()
       run_open(v.view)
     end)
@@ -131,7 +133,7 @@ function Toggle.open_group(side, group_name)
   Workspace:mark_open(side, group_name)
   local expected = {}
   vim.iter(views):each(function(v)
-    expected[v.name] = true
+    if not selected or selected[v.name] then expected[v.name] = true end
   end)
   arrange_now(expected, presumed)
 end

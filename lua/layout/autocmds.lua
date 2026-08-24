@@ -250,7 +250,7 @@ function Autocmds:wire()
   vim.api.nvim_create_autocmd('DirChanged', {
     group = self.augroup,
     callback = function()
-      if self.config and self.config.workspaces and self.config.workspaces.auto_restore then Restore.restore(self.config) end
+      if self.config and self.config.workspaces and self.config.workspaces.auto_restore then Restore.restore(self.config, true) end
     end,
   })
 

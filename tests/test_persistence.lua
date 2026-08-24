@@ -115,6 +115,20 @@ describe("shared.store", function()
     expect.equality(state, vim.NIL)
   end)
 
+  it("load rejects valid JSON with an invalid workspace shape", function()
+    -- Given: a readable workspace file whose JSON value is not a state object
+    child.lua([[
+      local path = _G.TEST_STORE_DIR .. "/" .. require("layout.shared.lib").cwd_hash(vim.fn.getcwd()) .. ".json"
+      vim.fn.writefile({ vim.json.encode({ sides = "left" }) }, path)
+
+      -- When: the workspace is loaded
+      _G._loaded_invalid = require("layout.shared.store").load(_G.TEST_CFG)
+    ]])
+
+    -- Then: malformed state is ignored instead of reaching restoration
+    expect.equality(child.lua_get([[_G._loaded_invalid]]), vim.NIL)
+  end)
+
   it("forget deletes the saved file", function()
     child.lua([[
       local store = require("layout.shared.store")
@@ -279,7 +293,7 @@ describe("features.restore", function()
     child.lua([[
       local store = require("layout.shared.store")
       store.save(_G.TEST_CFG, {
-        sides = { left = { explorer = { "toolL" } } },
+        sides = { left = { explorer = { filesystem = true } } },
       })
     ]])
 
@@ -292,6 +306,63 @@ describe("features.restore", function()
 
     local after = #child.api.nvim_tabpage_list_wins(0)
     expect.equality(after, before + 1)
+  end)
+
+  it("restores only the views recorded for a group", function()
+    -- Given: a group with two views and a snapshot containing only the second
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          tools = {
+            views = {
+              first = { filter = "tool-one", open = "belowright split | enew | setfiletype tool-one" },
+              second = { filter = "tool-two", open = "belowright split | enew | setfiletype tool-two" },
+            },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.lua([[
+      require("layout.shared.store").save(_G.TEST_CFG, {
+        sides = { left = { tools = { second = true } } },
+      })
+    ]])
+
+    -- When: the saved workspace is restored
+    child.lua([[require("layout.features.restore").restore(_G.TEST_CFG)]])
+
+    -- Then: only the recorded view's opener ran
+    expect.equality(child.lua_get([[
+      vim.iter(require("layout.entities.view"):iter_matches()):fold({}, function(names, match)
+        names[match.name] = true
+        return names
+      end)
+    ]]), { second = true })
+  end)
+
+  it("replaces open groups with the saved workspace", function()
+    -- Given: an open group but a saved workspace in which it is closed
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          explorer = {
+            views = { filesystem = { filter = "toolL", open = "belowright split | enew | setfiletype toolL" } },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.lua([[
+      require("layout.features.toggle").open_group("left", "explorer")
+      require("layout.shared.store").save(_G.TEST_CFG, { sides = { left = {} } })
+    ]])
+
+    -- When: the saved workspace is restored
+    child.lua([[require("layout.features.restore").restore(_G.TEST_CFG)]])
+
+    -- Then: views absent from the snapshot are closed
+    expect.equality(child.lua_get([[vim.iter(require("layout.entities.view"):iter_matches()):count()]]), 0)
   end)
 
   it("restores explicitly when automatic restoration is disabled", function()
