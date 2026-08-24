@@ -40,7 +40,6 @@
 ---@field right? Placement.Region
 ---@field bottom? Placement.Region
 ---@field rail? Placement.Rail Full-height outer edge slot.
----@field center? boolean Keep a center/editor slot (default `true`)
 
 local Spec = {
   SIDES = { left = 'L', right = 'R', bottom = 'B' },
@@ -74,7 +73,6 @@ function Spec.normalize_spec(spec)
   spec.right = spec.right or nil
   spec.bottom = spec.bottom or nil
   if spec.bottom and spec.bottom.align == nil then spec.bottom.align = 'contained' end
-  if spec.center == nil then spec.center = true end
   label_region(spec.left, 'L')
   label_region(spec.right, 'R')
   label_region(spec.bottom, 'B')
