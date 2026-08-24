@@ -18,17 +18,20 @@ local Toggle = {}
 ---@param view Layout.View.Entry
 ---@return boolean ok
 ---@return any error
+---@return boolean attempted
 local function run_open(view)
   local open = view.open
-  if not open then return false, 'no open command configured' end
+  if not open then return true, nil, false end
   if type(open) == 'function' then
-    return pcall(open)
+    local ok, err = pcall(open)
+    return ok, err, true
   elseif type(open) == 'string' then
-    return pcall(function()
+    local ok, err = pcall(function()
       vim.cmd(open)
     end)
+    return ok, err, true
   end
-  return false, 'open must be a string or function'
+  return false, 'open must be a string or function', true
 end
 
 --- Collect the non-floating windows created by `fn` by diffing the
@@ -124,11 +127,12 @@ function Toggle.open_group(side, group_name, selected)
   ---@type Layout.Entity.Panel.Presumed
   local presumed = {}
   local expected = {}
+  local opened_any = false
   vim.iter(views):each(function(v)
     if selected and not selected[v.name] then return end
-    local opened, open_error
+    local opened, open_error, attempted
     local created = windows_created_by(function()
-      opened, open_error = run_open(v.view)
+      opened, open_error, attempted = run_open(v.view)
     end)
     if not opened then
       vim.notify(
@@ -137,12 +141,13 @@ function Toggle.open_group(side, group_name, selected)
       )
       return
     end
-    expected[v.name] = true
+    opened_any = true
+    if attempted then expected[v.name] = true end
     for _, winid in ipairs(created) do
       presumed[winid] = { side = side, group = group_name, vname = v.name, ve = v.view }
     end
   end)
-  if next(expected) then Workspace:mark_open(side, group_name) end
+  if opened_any then Workspace:mark_open(side, group_name) end
   arrange_now(expected, presumed)
 end
 
