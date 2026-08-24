@@ -21,13 +21,16 @@ describe('features.pick', function()
 
   it('cancels picker silently when Escape is pressed', function()
     -- Given: pick mode is active and Escape is returned by getcharstr()
-    U.setup_config(child, U.test_config({
-      left = {
-        groups = {
-          explorer = { picker = { key = 'e' } },
+    U.setup_config(
+      child,
+      U.test_config({
+        left = {
+          groups = {
+            explorer = { picker = { key = 'e' } },
+          },
         },
-      },
-    }))
+      })
+    )
     child.lua([[vim.fn.getcharstr = function() return '\27' end]])
     child.lua([[vim.notify = function(message) _G._notification = message end]])
 
@@ -42,13 +45,16 @@ describe('features.pick', function()
 
   it('still toggles the group mapped to a pressed key', function()
     -- Given: a group is registered with the key "e"
-    U.setup_config(child, U.test_config({
-      left = {
-        groups = {
-          explorer = { picker = { key = 'e' } },
+    U.setup_config(
+      child,
+      U.test_config({
+        left = {
+          groups = {
+            explorer = { picker = { key = 'e' } },
+          },
         },
-      },
-    }))
+      })
+    )
     child.lua([[vim.fn.getcharstr = function() return 'e' end]])
     child.lua([[
       local Pick = require('layout.features.pick')
@@ -64,9 +70,12 @@ describe('features.pick', function()
 
   it('clears pick mode when reading input fails', function()
     -- Given: the input provider raises while pick mode is active
-    U.setup_config(child, U.test_config({
-      left = { groups = { explorer = { picker = { key = 'e' } } } },
-    }))
+    U.setup_config(
+      child,
+      U.test_config({
+        left = { groups = { explorer = { picker = { key = 'e' } } } },
+      })
+    )
     child.lua([[vim.fn.getcharstr = function() error('input interrupted') end]])
 
     -- When: the picker attempts to read input
@@ -80,44 +89,47 @@ describe('features.pick', function()
   describe('Shared picker keys', function()
     it('opens every group sharing a key', function()
       -- Given: closed groups in every panel share the key "d".
-      U.setup_config(child, U.test_config({
-        left = {
-          groups = {
-            debug = {
-              picker = { key = 'd' },
-              views = {
-                left_tool = {
-                  filter = 'dev66_left',
-                  open = "let g:dev66_left_opened = get(g:, 'dev66_left_opened', 0) + 1 | belowright split | enew | setfiletype dev66_left",
+      U.setup_config(
+        child,
+        U.test_config({
+          left = {
+            groups = {
+              debug = {
+                picker = { key = 'd' },
+                views = {
+                  left_tool = {
+                    filter = 'dev66_left',
+                    open = "let g:dev66_left_opened = get(g:, 'dev66_left_opened', 0) + 1 | belowright split | enew | setfiletype dev66_left",
+                  },
                 },
               },
             },
           },
-        },
-        right = {
-          groups = {
-            debug = {
-              picker = { key = 'd' },
-              views = {
-                right_tool = { filter = 'dev66_right' },
-              },
-            },
-          },
-        },
-        bottom = {
-          groups = {
-            debug = {
-              picker = { key = 'd' },
-              views = {
-                bottom_tool = {
-                  filter = 'dev66_bottom',
-                  open = "let g:dev66_bottom_opened = get(g:, 'dev66_bottom_opened', 0) + 1 | belowright split | enew | setfiletype dev66_bottom",
+          right = {
+            groups = {
+              debug = {
+                picker = { key = 'd' },
+                views = {
+                  right_tool = { filter = 'dev66_right' },
                 },
               },
             },
           },
-        },
-      }))
+          bottom = {
+            groups = {
+              debug = {
+                picker = { key = 'd' },
+                views = {
+                  bottom_tool = {
+                    filter = 'dev66_bottom',
+                    open = "let g:dev66_bottom_opened = get(g:, 'dev66_bottom_opened', 0) + 1 | belowright split | enew | setfiletype dev66_bottom",
+                  },
+                },
+              },
+            },
+          },
+        })
+      )
       child.lua([[vim.fn.getcharstr = function() return 'd' end]])
 
       -- When: the picker receives the shared key.
@@ -134,44 +146,47 @@ describe('features.pick', function()
 
     it('closes every group sharing a key', function()
       -- Given: the shared groups are open, including one without an open command.
-      U.setup_config(child, U.test_config({
-        left = {
-          groups = {
-            debug = {
-              picker = { key = 'd' },
-              views = {
-                left_tool = {
-                  filter = 'dev66_left',
-                  open = 'belowright split | enew | setfiletype dev66_left',
+      U.setup_config(
+        child,
+        U.test_config({
+          left = {
+            groups = {
+              debug = {
+                picker = { key = 'd' },
+                views = {
+                  left_tool = {
+                    filter = 'dev66_left',
+                    open = 'belowright split | enew | setfiletype dev66_left',
+                  },
                 },
               },
             },
           },
-        },
-        right = {
-          groups = {
-            debug = {
-              picker = { key = 'd' },
-              views = {
-                right_tool = { filter = 'dev66_right' },
-              },
-            },
-          },
-        },
-        bottom = {
-          groups = {
-            debug = {
-              picker = { key = 'd' },
-              views = {
-                bottom_tool = {
-                  filter = 'dev66_bottom',
-                  open = 'belowright split | enew | setfiletype dev66_bottom',
+          right = {
+            groups = {
+              debug = {
+                picker = { key = 'd' },
+                views = {
+                  right_tool = { filter = 'dev66_right' },
                 },
               },
             },
           },
-        },
-      }))
+          bottom = {
+            groups = {
+              debug = {
+                picker = { key = 'd' },
+                views = {
+                  bottom_tool = {
+                    filter = 'dev66_bottom',
+                    open = 'belowright split | enew | setfiletype dev66_bottom',
+                  },
+                },
+              },
+            },
+          },
+        })
+      )
       child.lua([[vim.fn.getcharstr = function() return 'd' end]])
       child.lua([[require('layout.features.pick').prompt()]])
       child.lua([[vim.wait(100, function() return false end)]])
@@ -183,12 +198,15 @@ describe('features.pick', function()
       expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('left', 'debug')]]), false)
       expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('right', 'debug')]]), false)
       expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('bottom', 'debug')]]), false)
-      expect.equality(child.lua_get([[
+      expect.equality(
+        child.lua_get([[
         vim.iter(vim.api.nvim_tabpage_list_wins(0)):any(function(winid)
           local ft = vim.bo[vim.api.nvim_win_get_buf(winid)].filetype
           return ft == 'dev66_left' or ft == 'dev66_bottom'
         end)
-      ]]), false)
+      ]]),
+        false
+      )
     end)
   end)
 end)

@@ -2,18 +2,18 @@
 ---
 --- Registered during setup via vim.api.nvim_create_user_command.
 
+local Constants = require('layout.shared.constants')
 local Group = require('layout.entities.group')
 local Pick = require('layout.features.pick')
 local Restore = require('layout.features.restore')
 local Save = require('layout.features.save')
 local Store = require('layout.shared.store')
 local Toggle = require('layout.features.toggle')
-local Constants = require('layout.shared.constants')
 
 ---@class Layout.Commands
 ---@field private config Layout.Config?
 local Commands = {
-  config = nil
+  config = nil,
 }
 
 ---@type string[]
@@ -79,7 +79,10 @@ function Commands:setup(config)
         return
       end
       if ambiguous then
-        vim.notify('[layout.nvim] Group exists on multiple sides; use: Layout toggle <side> ' .. group_name, vim.log.levels.WARN)
+        vim.notify(
+          '[layout.nvim] Group exists on multiple sides; use: Layout toggle <side> ' .. group_name,
+          vim.log.levels.WARN
+        )
         return
       end
       vim.notify('[layout.nvim] Group not found: ' .. group_name, vim.log.levels.WARN)
@@ -105,10 +108,7 @@ function Commands:setup(config)
       Store.forget(self.config)
       vim.notify('[layout.nvim] Workspace forgotten', vim.log.levels.INFO)
     else
-      vim.notify(
-        '[layout.nvim] Usage: Layout {toggle|close|pick|save|restore|forget} [...]',
-        vim.log.levels.WARN
-      )
+      vim.notify('[layout.nvim] Usage: Layout {toggle|close|pick|save|restore|forget} [...]', vim.log.levels.WARN)
     end
   end, {
     nargs = '*',
@@ -147,11 +147,21 @@ function Commands:setup(config)
       if sub == 'toggle' then
         if (word_count == 2 and trailing_space) or (word_count == 3 and not trailing_space) then
           local candidates = vim.list_extend(vim.deepcopy(Constants.sides), all_group_names())
-          return vim.iter(candidates):filter(function(n) return vim.startswith(n, arg_lead) end):totable()
+          return vim
+            .iter(candidates)
+            :filter(function(n)
+              return vim.startswith(n, arg_lead)
+            end)
+            :totable()
         end
         local side = words[3]
         if Constants.side_set[side] then
-          return vim.iter(Group:list(side)):filter(function(n) return vim.startswith(n, arg_lead) end):totable()
+          return vim
+            .iter(Group:list(side))
+            :filter(function(n)
+              return vim.startswith(n, arg_lead)
+            end)
+            :totable()
         end
         return vim
           .iter(all_group_names())

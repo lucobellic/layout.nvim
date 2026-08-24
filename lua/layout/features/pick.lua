@@ -6,11 +6,11 @@
 --- prompt() activates pick mode on the statusline module before waiting
 --- so that group keys are rendered next to icons during the pick gesture.
 
+local Group = require('layout.entities.group')
+local Rail = require('layout.features.rail')
+local Statusline = require('layout.features.statusline')
 local Toggle = require('layout.features.toggle')
 local Workspace = require('layout.entities.workspace')
-local Group = require('layout.entities.group')
-local Statusline = require('layout.features.statusline')
-local Rail = require('layout.features.rail')
 
 ---@class Layout.Feature.Pick
 local Pick = {}

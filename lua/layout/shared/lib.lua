@@ -23,9 +23,7 @@ function Lib.win_side(winid, bufnr)
   bufnr = bufnr or vim.api.nvim_win_get_buf(winid)
   local View = require('layout.entities.view')
   local ok, side = pcall(View.match_by_buf, View, bufnr, winid)
-  if ok and side then
-    return side
-  end
+  if ok and side then return side end
   return nil
 end
 

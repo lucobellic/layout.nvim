@@ -89,7 +89,12 @@ local function run_pending_arrange(tabpage)
     session.pending_arrange = true
     error(err)
   end
-  if session.pending_save and Autocmds.config and Autocmds.config.workspaces and Autocmds.config.workspaces.auto_save then
+  if
+    session.pending_save
+    and Autocmds.config
+    and Autocmds.config.workspaces
+    and Autocmds.config.workspaces.auto_save
+  then
     Save.save(Autocmds.config)
     session.pending_save = false
   end
@@ -250,7 +255,9 @@ function Autocmds:wire()
   vim.api.nvim_create_autocmd('DirChanged', {
     group = self.augroup,
     callback = function()
-      if self.config and self.config.workspaces and self.config.workspaces.auto_restore then Restore.restore(self.config, true) end
+      if self.config and self.config.workspaces and self.config.workspaces.auto_restore then
+        Restore.restore(self.config, true)
+      end
     end,
   })
 

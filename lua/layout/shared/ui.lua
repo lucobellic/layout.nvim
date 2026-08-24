@@ -11,7 +11,8 @@ local UI = {
   augroup = nil,
 }
 
-local CATEGORIES = { 'Active', 'Inactive', 'Hover', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }
+local CATEGORIES =
+  { 'Active', 'Inactive', 'Hover', 'PickActive', 'PickInactive', 'SeparatorActive', 'SeparatorInactive' }
 local SIDES = { 'Left', 'Right', 'Bottom' }
 
 --- Convert PascalCase to snake_case.

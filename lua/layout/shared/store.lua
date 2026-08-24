@@ -44,14 +44,10 @@ function Store.save(config, state, cwd)
   cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
   local dir = vim.fn.fnamemodify(path, ':h')
-  if vim.fn.isdirectory(dir) == 0 then
-    vim.fn.mkdir(dir, 'p')
-  end
+  if vim.fn.isdirectory(dir) == 0 then vim.fn.mkdir(dir, 'p') end
   state.cwd = cwd
   local encoded = vim.json.encode(state)
-  if encoded then
-    vim.fn.writefile(vim.split(encoded, '\n'), path)
-  end
+  if encoded then vim.fn.writefile(vim.split(encoded, '\n'), path) end
 end
 
 --- Load workspace state from disk.
@@ -62,17 +58,11 @@ end
 function Store.load(config, cwd)
   cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
-  if vim.fn.filereadable(path) == 0 then
-    return nil
-  end
+  if vim.fn.filereadable(path) == 0 then return nil end
   local lines = vim.fn.readfile(path)
-  if not lines or #lines == 0 then
-    return nil
-  end
+  if not lines or #lines == 0 then return nil end
   local ok, state = pcall(vim.json.decode, table.concat(lines, '\n'))
-  if not ok or not valid_state(state) then
-    return nil
-  end
+  if not ok or not valid_state(state) then return nil end
   return state
 end
 
@@ -83,9 +73,7 @@ end
 function Store.forget(config, cwd)
   cwd = cwd or vim.fn.getcwd()
   local path = filepath(config, cwd)
-  if vim.fn.filereadable(path) == 1 then
-    os.remove(path)
-  end
+  if vim.fn.filereadable(path) == 1 then os.remove(path) end
 end
 
 return Store

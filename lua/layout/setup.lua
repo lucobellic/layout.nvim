@@ -9,6 +9,7 @@ local M = {}
 local Autocmds = require('layout.autocmds')
 local Commands = require('layout.commands')
 local Config = require('layout.shared.config')
+local Constants = require('layout.shared.constants')
 local Group = require('layout.entities.group')
 local Panel = require('layout.entities.panel')
 local Rail = require('layout.features.rail')
@@ -17,7 +18,6 @@ local Statusline = require('layout.features.statusline')
 local Ui = require('layout.shared.ui')
 local View = require('layout.entities.view')
 local ViewState = require('layout.shared.view_state')
-local Constants = require('layout.shared.constants')
 
 ---@public
 ---@param opts? table

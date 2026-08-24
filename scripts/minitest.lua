@@ -23,4 +23,3 @@ require('mini.test').setup({
     end,
   },
 })
-

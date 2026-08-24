@@ -4,42 +4,51 @@
 ---
 --- cwd_hash is a pure test. The rest require a child process (file IO / windows).
 
-local U = require("tests.util")
-local MiniTest = require("mini.test")
+local MiniTest = require('mini.test')
+local U = require('tests.util')
 local expect = MiniTest.expect
 local ROOT = vim.fn.getcwd()
 
-local lib = require("layout.shared.lib")
+local lib = require('layout.shared.lib')
 
 --------------------------------------------------------------------------------
 -- shared/lib.lua  (pure — main process)
 --------------------------------------------------------------------------------
-describe("shared.lib", function()
-  describe("cwd_hash", function()
-    it("returns a stable 12-char hex hash for the same path", function()
-      local h1 = lib.cwd_hash("/home/user/project")
-      local h2 = lib.cwd_hash("/home/user/project")
+describe('shared.lib', function()
+  describe('cwd_hash', function()
+    it('returns a stable 12-char hex hash for the same path', function()
+      local h1 = lib.cwd_hash('/home/user/project')
+      local h2 = lib.cwd_hash('/home/user/project')
       expect.equality(#h1, 12)
       expect.equality(h1, h2)
     end)
 
-    it("produces different hashes for different paths", function()
-      local h1 = lib.cwd_hash("/home/user/project-a")
-      local h2 = lib.cwd_hash("/home/user/project-b")
+    it('produces different hashes for different paths', function()
+      local h1 = lib.cwd_hash('/home/user/project-a')
+      local h2 = lib.cwd_hash('/home/user/project-b')
       expect.equality(h1 == h2, false)
     end)
 
-    it("produces a lowercase hex string", function()
-      local h = lib.cwd_hash("/test")
-      expect.equality(string.match(h, "^[0-9a-f]+$") ~= nil, true)
+    it('produces a lowercase hex string', function()
+      local h = lib.cwd_hash('/test')
+      expect.equality(string.match(h, '^[0-9a-f]+$') ~= nil, true)
     end)
   end)
 
-  it("classifies a matching managed window", function()
+  it('classifies a matching managed window', function()
     -- Given: a registered view matching the current buffer
-    local View = require("layout.entities.view")
+    local View = require('layout.entities.view')
     View.entries = {
-      { side = "left", group = "tools", name = "custom", view = { filter = function() return true end } },
+      {
+        side = 'left',
+        group = 'tools',
+        name = 'custom',
+        view = {
+          filter = function()
+            return true
+          end,
+        },
+      },
     }
 
     -- When: the shared window helper classifies the current window
@@ -47,20 +56,20 @@ describe("shared.lib", function()
     View:clear()
 
     -- Then: it forwards both receiver and window context to the view registry
-    expect.equality(side, "left")
+    expect.equality(side, 'left')
   end)
 end)
 
 --------------------------------------------------------------------------------
 -- shared/store.lua  (child process — needs file I/O)
 --------------------------------------------------------------------------------
-describe("shared.store", function()
+describe('shared.store', function()
   local child
 
   before_each(function()
     child = MiniTest.new_child_neovim()
     child.start()
-    child.cmd("set rtp+=" .. ROOT)
+    child.cmd('set rtp+=' .. ROOT)
     child.lua([[
       _G.TEST_STORE_DIR = vim.fn.tempname() .. "-layout-store"
       vim.fn.mkdir(_G.TEST_STORE_DIR, "p")
@@ -78,7 +87,7 @@ describe("shared.store", function()
     child.stop()
   end)
 
-  it("save writes a JSON file for the current cwd", function()
+  it('save writes a JSON file for the current cwd', function()
     child.lua([[
       local store = require("layout.shared.store")
       store.save(_G.TEST_CFG, {
@@ -89,12 +98,12 @@ describe("shared.store", function()
 
     local fname = child.lua_get([[_G._saved_fname]])
     -- Check file exists by embedding the path in a Lua expression
-    child.lua(string.format("_G._check_fname = %q", fname))
+    child.lua(string.format('_G._check_fname = %q', fname))
     local exists = child.lua_get([[vim.fn.filereadable(_G._check_fname) == 1]])
     expect.equality(exists, true)
   end)
 
-  it("load returns the saved state", function()
+  it('load returns the saved state', function()
     child.lua([[
       local store = require("layout.shared.store")
       store.save(_G.TEST_CFG, {
@@ -103,10 +112,10 @@ describe("shared.store", function()
       _G._loaded = store.load(_G.TEST_CFG)
     ]])
     local state = child.lua_get([[_G._loaded]])
-    expect.equality(state.sides.left.explorer[1], "neo-tree")
+    expect.equality(state.sides.left.explorer[1], 'neo-tree')
   end)
 
-  it("load returns nil when no file exists", function()
+  it('load returns nil when no file exists', function()
     child.lua([[
       local store = require("layout.shared.store")
       _G._loaded_nil = store.load(_G.TEST_CFG)
@@ -115,7 +124,7 @@ describe("shared.store", function()
     expect.equality(state, vim.NIL)
   end)
 
-  it("load rejects valid JSON with an invalid workspace shape", function()
+  it('load rejects valid JSON with an invalid workspace shape', function()
     -- Given: a readable workspace file whose JSON value is not a state object
     child.lua([[
       local path = _G.TEST_STORE_DIR .. "/" .. require("layout.shared.lib").cwd_hash(vim.fn.getcwd()) .. ".json"
@@ -129,7 +138,7 @@ describe("shared.store", function()
     expect.equality(child.lua_get([[_G._loaded_invalid]]), vim.NIL)
   end)
 
-  it("forget deletes the saved file", function()
+  it('forget deletes the saved file', function()
     child.lua([[
       local store = require("layout.shared.store")
       store.save(_G.TEST_CFG, { sides = { left = {} } })
@@ -144,13 +153,13 @@ end)
 --------------------------------------------------------------------------------
 -- features/save.lua  (child process — needs windows + file I/O)
 --------------------------------------------------------------------------------
-describe("features.save", function()
+describe('features.save', function()
   local child
 
   before_each(function()
     child = MiniTest.new_child_neovim()
     child.start()
-    child.cmd("set rtp+=" .. ROOT)
+    child.cmd('set rtp+=' .. ROOT)
     child.lua([[
       _G.TEST_STORE_DIR = vim.fn.tempname() .. "-layout-save"
       vim.fn.mkdir(_G.TEST_STORE_DIR, "p")
@@ -168,14 +177,14 @@ describe("features.save", function()
     child.stop()
   end)
 
-  it("snapshots open tool windows to a saved file", function()
+  it('snapshots open tool windows to a saved file', function()
     local cfg = U.test_config({
       left = {
         size = 30,
         groups = {
           explorer = {
             views = {
-              filesystem = { filter = "toolL", open = "echo" },
+              filesystem = { filter = 'toolL', open = 'echo' },
             },
           },
         },
@@ -183,7 +192,7 @@ describe("features.save", function()
     })
     U.setup_config(child, cfg)
 
-    U.make_tool_win(child, "toolL")
+    U.make_tool_win(child, 'toolL')
 
     child.lua([[
       require("layout.features.save").save(_G.TEST_CFG)
@@ -195,7 +204,7 @@ describe("features.save", function()
     expect.equality(state.sides.left.explorer.filesystem, true)
   end)
 
-  it("persists function-filtered views even when their filetype is empty", function()
+  it('persists function-filtered views even when their filetype is empty', function()
     -- Given: a view matched by custom state rather than filetype
     local cfg = U.test_config({
       left = {
@@ -225,13 +234,13 @@ describe("features.save", function()
     expect.equality(child.lua_get([[_G._snapshot.sides.left.explorer.filesystem]]), true)
   end)
 
-  it("saves explicitly when automatic saving is disabled", function()
+  it('saves explicitly when automatic saving is disabled', function()
     -- Given: automatic persistence is disabled and a matching view is open
     local cfg = U.test_config({
-      left = { groups = { explorer = { views = { filesystem = { filter = "toolL" } } } } },
+      left = { groups = { explorer = { views = { filesystem = { filter = 'toolL' } } } } },
     })
     U.setup_config(child, cfg)
-    U.make_tool_win(child, "toolL")
+    U.make_tool_win(child, 'toolL')
     child.lua([[_G.TEST_CFG.workspaces.auto_save = false]])
 
     -- When: save is invoked explicitly
@@ -248,13 +257,13 @@ end)
 --------------------------------------------------------------------------------
 -- features/restore.lua  (child process — needs windows + file I/O)
 --------------------------------------------------------------------------------
-describe("features.restore", function()
+describe('features.restore', function()
   local child
 
   before_each(function()
     child = MiniTest.new_child_neovim()
     child.start()
-    child.cmd("set rtp+=" .. ROOT)
+    child.cmd('set rtp+=' .. ROOT)
     child.lua([[
       _G.TEST_STORE_DIR = vim.fn.tempname() .. "-layout-restore"
       vim.fn.mkdir(_G.TEST_STORE_DIR, "p")
@@ -272,7 +281,7 @@ describe("features.restore", function()
     child.stop()
   end)
 
-  it("restores saved open groups by calling their open commands", function()
+  it('restores saved open groups by calling their open commands', function()
     local cfg = U.test_config({
       left = {
         size = 30,
@@ -280,8 +289,8 @@ describe("features.restore", function()
           explorer = {
             views = {
               filesystem = {
-                filter = "toolL",
-                open = "belowright split",
+                filter = 'toolL',
+                open = 'belowright split',
               },
             },
           },
@@ -302,21 +311,23 @@ describe("features.restore", function()
     child.lua([[
       require("layout.features.restore").restore(_G.TEST_CFG)
     ]])
-    vim.wait(500, function() return true end)
+    vim.wait(500, function()
+      return true
+    end)
 
     local after = #child.api.nvim_tabpage_list_wins(0)
     expect.equality(after, before + 1)
   end)
 
-  it("restores only the views recorded for a group", function()
+  it('restores only the views recorded for a group', function()
     -- Given: a group with two views and a snapshot containing only the second
     local cfg = U.test_config({
       left = {
         groups = {
           tools = {
             views = {
-              first = { filter = "tool-one", open = "belowright split | enew | setfiletype tool-one" },
-              second = { filter = "tool-two", open = "belowright split | enew | setfiletype tool-two" },
+              first = { filter = 'tool-one', open = 'belowright split | enew | setfiletype tool-one' },
+              second = { filter = 'tool-two', open = 'belowright split | enew | setfiletype tool-two' },
             },
           },
         },
@@ -333,21 +344,24 @@ describe("features.restore", function()
     child.lua([[require("layout.features.restore").restore(_G.TEST_CFG)]])
 
     -- Then: only the recorded view's opener ran
-    expect.equality(child.lua_get([[
+    expect.equality(
+      child.lua_get([[
       vim.iter(require("layout.entities.view"):iter_matches()):fold({}, function(names, match)
         names[match.name] = true
         return names
       end)
-    ]]), { second = true })
+    ]]),
+      { second = true }
+    )
   end)
 
-  it("replaces open groups with the saved workspace", function()
+  it('replaces open groups with the saved workspace', function()
     -- Given: an open group but a saved workspace in which it is closed
     local cfg = U.test_config({
       left = {
         groups = {
           explorer = {
-            views = { filesystem = { filter = "toolL", open = "belowright split | enew | setfiletype toolL" } },
+            views = { filesystem = { filter = 'toolL', open = 'belowright split | enew | setfiletype toolL' } },
           },
         },
       },
@@ -365,13 +379,13 @@ describe("features.restore", function()
     expect.equality(child.lua_get([[vim.iter(require("layout.entities.view"):iter_matches()):count()]]), 0)
   end)
 
-  it("restores explicitly when automatic restoration is disabled", function()
+  it('restores explicitly when automatic restoration is disabled', function()
     -- Given: a saved group and automatic restoration disabled
     local cfg = U.test_config({
       left = {
         groups = {
           explorer = {
-            views = { filesystem = { filter = "toolL", open = "belowright split" } },
+            views = { filesystem = { filter = 'toolL', open = 'belowright split' } },
           },
         },
       },

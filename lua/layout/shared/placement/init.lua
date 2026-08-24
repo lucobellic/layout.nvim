@@ -6,8 +6,8 @@
 ---@class Placement
 local Placement = {}
 
-local Spec = require('layout.shared.placement.spec')
 local Engine = require('layout.shared.placement.engine')
+local Spec = require('layout.shared.placement.spec')
 
 --- Move existing windows to match a declarative placement spec.
 ---@public

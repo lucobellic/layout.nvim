@@ -14,11 +14,13 @@ local view_entity = require('layout.entities.view')
 ---@private
 ---@return table
 local function snapshot()
-  return vim.iter(view_entity:iter_matches()):fold({ sides = { left = {}, right = {}, bottom = {} } }, function(data, match)
-    data.sides[match.side][match.group] = data.sides[match.side][match.group] or {}
-    data.sides[match.side][match.group][match.name] = true
-    return data
-  end)
+  return vim
+    .iter(view_entity:iter_matches())
+    :fold({ sides = { left = {}, right = {}, bottom = {} } }, function(data, match)
+      data.sides[match.side][match.group] = data.sides[match.side][match.group] or {}
+      data.sides[match.side][match.group][match.name] = true
+      return data
+    end)
 end
 
 --- Save the current workspace for the active cwd.
