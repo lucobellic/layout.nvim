@@ -138,6 +138,15 @@ describe('config.normalize', function()
       expect.equality(pose_ok, false)
     end)
 
+    it('rejects non-string trigger events', function()
+      -- Given: an event list containing a value Neovim cannot register
+      -- When: the configuration is merged
+      local ok = pcall(config.merge, { events = { 'FileType', 42 } })
+
+      -- Then: setup fails with a configuration error
+      expect.equality(ok, false)
+    end)
+
     it('rejects duplicate group and view names on the same side', function()
       -- Given: declarations that would overwrite their name-keyed registry entries
       local duplicate_groups = config.merge({

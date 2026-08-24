@@ -39,6 +39,37 @@ describe('setup()', function()
     expect.equality(child.o.winminheight, 0)
     expect.equality(child.o.winminwidth, 0)
   end)
+
+  it('can be called again to replace the active configuration', function()
+    -- Given: layout.nvim has already registered its command and lifecycle hooks
+    child.lua([[require('layout').setup({ workspaces = { auto_restore = false } })]])
+
+    -- When: setup is called again, as during a plugin configuration reload
+    local ok = child.lua_get([[
+      pcall(require('layout').setup, { workspaces = { auto_restore = false } })
+    ]])
+
+    -- Then: the existing :Layout command is replaced without an error
+    expect.equality(ok, true)
+  end)
+
+  it('registers each configured trigger event once', function()
+    -- Given: the same trigger was accidentally configured more than once
+    child.lua([[
+      require('layout').setup({
+        events = { 'FileType', 'FileType' },
+        workspaces = { auto_restore = false },
+      })
+    ]])
+
+    -- When: registered FileType hooks are inspected
+    local count = child.lua_get([[
+      #vim.api.nvim_get_autocmds({ group = 'Layout', event = 'FileType' })
+    ]])
+
+    -- Then: only one placement callback exists for that event
+    expect.equality(count, 1)
+  end)
 end)
 
 --------------------------------------------------------------------------------

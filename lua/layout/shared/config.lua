@@ -196,6 +196,17 @@ local VALID_PICK_POSES = { left = true, right = true, left_separator = true, rig
 ---@return Layout.Config
 function Config.merge(opts)
   local merged = vim.tbl_deep_extend('force', defaults, opts or {})
+  if type(merged.events) ~= 'table' then error('events must be a list of autocommand event names') end
+  local events = {}
+  local seen_events = {}
+  for index, event in ipairs(merged.events) do
+    if type(event) ~= 'string' or event == '' then error(('events[%d] must be a non-empty string'):format(index)) end
+    if not seen_events[event] then
+      events[#events + 1] = event
+      seen_events[event] = true
+    end
+  end
+  merged.events = events
   if merged.bottom and merged.bottom.align and not VALID_ALIGNMENTS[merged.bottom.align] then
     error('bottom.align must be "contained", "left_aligned", "right_aligned", or "full"')
   end

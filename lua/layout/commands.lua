@@ -112,6 +112,7 @@ function Commands:setup(config)
     end
   end, {
     nargs = '*',
+    force = true,
     complete = function(arg_lead, cmdline)
       local words = vim
         .iter(vim.split(cmdline, '%s+'))
