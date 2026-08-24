@@ -28,6 +28,14 @@
 
 ---@alias Layout.Entity.Panel.Presumed table<integer, Layout.Entity.Panel.PresumedEntry>
 
+---@class Layout.Entity.Panel.Order
+---@field group table<string, integer>
+---@field view table<string, integer>
+
+---@class Layout.Entity.Panel.RawSlotKeys
+---@field with_key Layout.Entity.Panel.RawSlot[]
+---@field without_key Layout.Entity.Panel.RawSlot[]
+
 local Constants = require('layout.shared.constants')
 local placement = require('layout.shared.placement')
 local size_model = require('layout.entities.panel.model.size')
@@ -42,91 +50,213 @@ local Panel = {
   rail = nil,
 }
 
+---Separate slots with persisted keys from slots that still need assignment.
+---@param raw Layout.Entity.Panel.RawSlot[]
+---@return Layout.Entity.Panel.RawSlotKeys
+local function partition_slot_keys(raw)
+  return vim.iter(raw):fold({ with_key = {}, without_key = {} }, function(keys, item)
+    local destination = item.key and keys.with_key or keys.without_key
+    destination[#destination + 1] = item
+    return keys
+  end)
+end
+
+---Count windows sharing each group and view identity.
+---@param raw Layout.Entity.Panel.RawSlot[]
+---@return table<string, integer>
+local function count_slot_identities(raw)
+  return vim.iter(raw):fold({}, function(counts, item)
+    local identity = item.gname .. '\0' .. item.vname
+    counts[identity] = (counts[identity] or 0) + 1
+    return counts
+  end)
+end
+
+---Find the highest persisted occurrence index for each view identity.
+---@param slots Layout.Entity.Panel.RawSlot[]
+---@return table<string, integer>
+local function indexed_slot_maxima(slots)
+  return vim.iter(slots):fold({}, function(maxima, item)
+    local identity = item.gname .. '\0' .. item.vname
+    local index = item.key and item.key:match(':(%d+)$') or nil
+    if index then maxima[identity] = math.max(maxima[identity] or 0, tonumber(index)) end
+    return maxima
+  end)
+end
+
+---Assign stable keys to slots that do not already have one.
+---@param side Layout.Side
+---@param slots Layout.Entity.Panel.RawSlot[]
+---@param counts table<string, integer>
+---@param maxima table<string, integer>
+---@return nil
+local function assign_slot_keys(side, slots, counts, maxima)
+  for _, item in ipairs(slots) do
+    local identity = item.gname .. '\0' .. item.vname
+    local base = side .. ':' .. item.gname .. ':' .. item.vname
+    if counts[identity] > 1 then
+      local index = (maxima[identity] or 0) + 1
+      maxima[identity] = index
+      item.key = base .. ':' .. index
+    else
+      item.key = base
+    end
+  end
+end
+
+---Convert scanned windows into placement slots with resolved sizes.
+---@param raw Layout.Entity.Panel.RawSlot[]
+---@return Layout.Entity.Panel.Slot[]
+local function materialize_slots(raw)
+  return vim
+    .iter(raw)
+    :map(function(item)
+      return {
+        winid = item.winid,
+        bufnr = item.bufnr,
+        _key = item.key,
+        _vname = item.vname,
+        _gname = item.gname,
+        size = size_model:get_slot(item.key, item.ve and item.ve.size),
+      }
+    end)
+    :totable()
+end
+
+---Build a comparator that follows configured group and view order.
+---@param order Layout.Entity.Panel.Order
+---@return fun(left: Layout.Entity.Panel.Slot, right: Layout.Entity.Panel.Slot): boolean
+local function slot_comparator(order)
+  return function(left, right)
+    local left_group = order.group[left._gname or ''] or 9999
+    local right_group = order.group[right._gname or ''] or 9999
+    if left_group ~= right_group then return left_group < right_group end
+    local left_view = order.view[(left._gname or '') .. '\0' .. (left._vname or '')] or 9999
+    local right_view = order.view[(right._gname or '') .. '\0' .. (right._vname or '')] or 9999
+    if left_view ~= right_view then return left_view < right_view end
+    local left_index = tonumber(((left._key or ''):match(':(%d+)$'))) or 0
+    local right_index = tonumber(((right._key or ''):match(':(%d+)$'))) or 0
+    return left_index < right_index
+  end
+end
+
 --- Assign per-occurrence keys to raw slots on a side and return the final
 --- sorted slot list with sizes resolved.  Slots are ordered first by the
 --- group declaration position and then by the view position within the group.
 ---@private
 ---@param side Layout.Side
 ---@param raw Layout.Entity.Panel.RawSlot[]
----@param order { group: table<string, integer>, view: table<string, integer> }
+---@param order Layout.Entity.Panel.Order
 ---@return Layout.Entity.Panel.Slot[]
 local function finalize_side_slots(side, raw, order)
   if #raw == 0 then return {} end
+  local keys = partition_slot_keys(raw)
+  local counts = count_slot_identities(raw)
+  local maxima = indexed_slot_maxima(keys.with_key)
+  assign_slot_keys(side, keys.without_key, counts, maxima)
+  local slots = materialize_slots(raw)
+  table.sort(slots, slot_comparator(order))
+  return slots
+end
 
-  ---@alias RawSlotKeys { with_key: Layout.Entity.Panel.RawSlot[], without_key: Layout.Entity.Panel.RawSlot[] }
-
-  ---@param keys RawSlotKeys
-  ---@param item Layout.Entity.Panel.RawSlot
-  ---@type RawSlotKeys
-  local keys = vim.iter(raw):fold({ with_key = {}, without_key = {} }, function(keys, item)
-    local k = item.key and keys.with_key or keys.without_key
-    table.insert(k, item)
-    return keys
-  end)
-
-  ---@param total_counts table<string, integer>
-  ---@param item Layout.Entity.Panel.RawSlot
-  ---@type table<string, integer>
-  local total_counts = vim.iter(raw):fold({}, function(total_counts, item)
-    local identity = item.gname .. '\0' .. item.vname
-    total_counts[identity] = (total_counts[identity] or 0) + 1
-    return total_counts
-  end)
-
-  ---@param max_idx table<string, number>
-  ---@param item Layout.Entity.Panel.RawSlot
-  ---@type table<string, number>
-  local max_idx = vim.iter(keys.with_key):fold({}, function(max_idx, item)
-    local identity = item.gname .. '\0' .. item.vname
-    local idx = item.key:match(':(%d+)$')
-    if idx then max_idx[identity] = math.max(max_idx[identity] or 0, tonumber(idx)) end
-    return max_idx
-  end)
-
-  ---@param item Layout.Entity.Panel.RawSlot
-  vim.iter(keys.without_key):each(function(item)
-    local identity = item.gname .. '\0' .. item.vname
-    local base = side .. ':' .. item.gname .. ':' .. item.vname
-    if total_counts[identity] > 1 then
-      local n = (max_idx[identity] or 0) + 1
-      max_idx[identity] = n
-      item.key = base .. ':' .. n
-    else
-      item.key = base
-    end
-  end)
-
-  ---@type Layout.Entity.Panel.Slot[]
-  local slots = vim
-    .iter(raw)
-    :map(
-      ---@param item Layout.Entity.Panel.RawSlot
-      function(item)
-        return {
-          winid = item.winid,
-          bufnr = item.bufnr,
-          _key = item.key,
-          _vname = item.vname,
-          _gname = item.gname,
-          size = size_model:get_slot(item.key, item.ve and item.ve.size),
+---Classify normal tabpage windows into raw panel slots.
+---@param wins integer[]
+---@param presumed? Layout.Entity.Panel.Presumed
+---@return table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
+local function collect_raw_slots(wins, presumed)
+  local raw = { left = {}, right = {}, bottom = {} }
+  for _, winid in ipairs(wins) do
+    if vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_config(winid).relative == '' then
+      local bufnr = vim.api.nvim_win_get_buf(winid)
+      local side, gname, vname, ve = view_entity:match_by_buf(bufnr, winid)
+      if not side and presumed and presumed[winid] then
+        local entry = presumed[winid]
+        side, gname, vname, ve = entry.side, entry.group, entry.vname, entry.ve
+      end
+      if side then
+        local ok, existing_key = pcall(vim.api.nvim_win_get_var, winid, 'layout_view_key')
+        raw[side][#raw[side] + 1] = {
+          winid = winid,
+          bufnr = bufnr,
+          vname = vname,
+          gname = gname,
+          key = ok and type(existing_key) == 'string' and existing_key or nil,
+          ve = ve,
         }
       end
-    )
-    :totable()
+    end
+  end
+  return raw
+end
 
-  table.sort(slots, function(a, b)
-    local ga = order.group[a._gname or ''] or 9999
-    local gb = order.group[b._gname or ''] or 9999
-    if ga ~= gb then return ga < gb end
-    local va = order.view[(a._gname or '') .. '\0' .. (a._vname or '')] or 9999
-    local vb = order.view[(b._gname or '') .. '\0' .. (b._vname or '')] or 9999
-    if va ~= vb then return va < vb end
-    local na = tonumber(((a._key or ''):match(':(%d+)$'))) or 0
-    local nb = tonumber(((b._key or ''):match(':(%d+)$'))) or 0
-    return na < nb
-  end)
+---Build configured group and view position maps for each side.
+---@param registry Layout.Registry
+---@return table<Layout.Side, Layout.Entity.Panel.Order>
+local function build_order_maps(registry)
+  local maps = {}
+  for _, side in ipairs(Constants.sides) do
+    local side_entry = registry[side]
+    if side_entry and side_entry._order then
+      local order = { group = {}, view = {} }
+      for group_position, group_name in ipairs(side_entry._order) do
+        order.group[group_name] = group_position
+        local group_entry = side_entry.groups[group_name]
+        for view_position, view_name in ipairs(group_entry and group_entry._order or {}) do
+          order.view[group_name .. '\0' .. view_name] = view_position
+        end
+      end
+      maps[side] = order
+    end
+  end
+  return maps
+end
 
+---Finalize scanned slots for every panel side.
+---@param raw table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
+---@param order_maps table<Layout.Side, Layout.Entity.Panel.Order>
+---@return table<Layout.Side, Layout.Entity.Panel.Slot[]>
+local function build_side_slots(raw, order_maps)
+  local slots = {}
+  for _, side in ipairs(Constants.sides) do
+    slots[side] = finalize_side_slots(side, raw[side], order_maps[side] or { group = {}, view = {} })
+  end
   return slots
+end
+
+---Build placement regions from configured panel sizes and active slots.
+---@param registry Layout.Registry
+---Persist stable keys and public buffer metadata after placement.
+---@param side_slots table<Layout.Side, Layout.Entity.Panel.Slot[]>
+---@return table<Layout.Side, Placement.Region>
+local function build_regions(registry, side_slots)
+  local regions = {}
+  for _, side in ipairs(Constants.sides) do
+    local side_entry = registry[side]
+    if side_entry and #side_slots[side] > 0 then
+      local region = { size = size_model:get(side, side_entry.size), slots = side_slots[side] }
+      if side == 'bottom' and side_entry.align then region.align = side_entry.align end
+      regions[side] = region
+    end
+  end
+  return regions
+end
+
+---@param side_slots table<Layout.Side, Layout.Entity.Panel.Slot[]>
+---@return nil
+local function record_slot_metadata(side_slots)
+  for _, side in ipairs(Constants.sides) do
+    for _, slot in ipairs(side_slots[side]) do
+      if slot._key and vim.api.nvim_win_is_valid(slot.winid) then
+        pcall(vim.api.nvim_win_set_var, slot.winid, 'layout_view_key', slot._key)
+      end
+      vim.b[slot.bufnr].layout = {
+        side = side,
+        group = slot._gname,
+        view = slot._vname,
+        enabled = true,
+      }
+    end
+  end
 end
 
 --- Store the registry reference so features can drive arrangement without
@@ -140,7 +270,6 @@ end
 ---Set the rail provider used to reserve buffer-mode rails during placement.
 ---@public
 ---@param rail Layout.Feature.Rail
----@return nil
 function Panel:set_rail(rail)
   self.rail = rail
 end
@@ -152,31 +281,7 @@ end
 ---@return boolean placed Whether managed slots were placed.
 local function arrange(registry, presumed)
   local current_wins = vim.api.nvim_tabpage_list_wins(0)
-
-  ---@type table<Layout.Side, Layout.Entity.Panel.RawSlot[]>
-  local raw = { left = {}, right = {}, bottom = {} }
-  vim.iter(current_wins):each(function(winid)
-    if vim.api.nvim_win_is_valid(winid) and vim.api.nvim_win_get_config(winid).relative == '' then
-      local bufnr = vim.api.nvim_win_get_buf(winid)
-      local side, gname, vname, ve = view_entity:match_by_buf(bufnr, winid)
-      if not side and presumed and presumed[winid] then
-        local p = presumed[winid]
-        side, gname, vname, ve = p.side, p.group, p.vname, p.ve
-      end
-      if side then
-        local ok, existing_key = pcall(vim.api.nvim_win_get_var, winid, 'layout_view_key')
-        local key = (ok and type(existing_key) == 'string' and existing_key) or nil
-        table.insert(raw[side], {
-          winid = winid,
-          bufnr = bufnr,
-          vname = vname,
-          gname = gname,
-          key = key,
-          ve = ve,
-        })
-      end
-    end
-  end)
+  local raw = collect_raw_slots(current_wins, presumed)
 
   local has_slots = vim.iter(Constants.sides):any(function(side)
     return #raw[side] > 0
@@ -184,52 +289,11 @@ local function arrange(registry, presumed)
   local rail = Panel.rail and Panel.rail:placement_spec() or nil
   if not has_slots and not rail then return false end
 
-  ---@type table<Layout.Side, { group: table<string, integer>, view: table<string, integer> }>
-  local order_maps = {}
-  vim.iter(Constants.sides):each(function(side)
-    local se = registry[side]
-    if se and se._order then
-      local group_map = {}
-      local view_map = {}
-      local gpos = 0
-      vim.iter(se._order):each(function(gname)
-        gpos = gpos + 1
-        group_map[gname] = gpos
-        local ge = se.groups[gname]
-        if ge and ge._order then
-          vim.iter(ge._order):enumerate():each(function(vpos, vname)
-            view_map[gname .. '\0' .. vname] = vpos
-          end)
-        end
-      end)
-      order_maps[side] = { group = group_map, view = view_map }
-    end
-  end)
-
-  ---@type table<Layout.Side, Layout.Entity.Panel.Slot[]>
-  local side_slots = {}
-  vim.iter(Constants.sides):each(function(side)
-    side_slots[side] = finalize_side_slots(side, raw[side], order_maps[side] or { group = {}, view = {} })
-  end)
-
-  ---@type table<Layout.Side, Placement.Region>
-  local regions = {}
-  vim.iter(Constants.sides):each(function(side)
-    local se = registry[side]
-    if se and #side_slots[side] > 0 then
-      ---@type Placement.Region
-      local region = {
-        size = size_model:get(side, se.size),
-        slots = side_slots[side],
-      }
-      if side == 'bottom' and se.align then region.align = se.align end
-      regions[side] = region
-    end
-  end)
+  local side_slots = build_side_slots(raw, build_order_maps(registry))
+  local regions = build_regions(registry, side_slots)
 
   ---@type Placement.Spec
   local spec = {
-    center = true,
     rail = rail,
     left = regions.left,
     right = regions.right,
@@ -237,20 +301,7 @@ local function arrange(registry, presumed)
   }
 
   placement.place(spec)
-
-  vim.iter(Constants.sides):each(function(side)
-    for _, slot in ipairs(side_slots[side]) do
-      if slot._key and vim.api.nvim_win_is_valid(slot.winid) then
-        pcall(vim.api.nvim_win_set_var, slot.winid, 'layout_view_key', slot._key)
-      end
-      vim.b[slot.bufnr].layout = {
-        side = side,
-        group = slot._gname,
-        view = slot._vname,
-        enabled = true,
-      }
-    end
-  end)
+  record_slot_metadata(side_slots)
 
   return true
 end
@@ -264,6 +315,7 @@ end
 ---@public
 ---@param registry? Layout.Registry
 ---@param presumed? Layout.Entity.Panel.Presumed
+---@return nil
 function Panel:arrange(registry, presumed)
   registry = registry or self.registry
   if vim.fn.getcmdwintype() ~= '' or vim.v.exiting ~= vim.NIL then

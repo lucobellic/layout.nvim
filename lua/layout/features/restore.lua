@@ -27,6 +27,8 @@ function Restore.restore(config, clear_missing)
 
   vim.iter(Constants.sides):each(function(side)
     local saved = state.sides[side] or {}
+    -- Closing first makes the snapshot authoritative, including partial groups
+    -- where only some of the configured views were saved as open.
     for _, gname in ipairs(Group:list(side)) do
       Toggle.close_group(side, gname)
       local group_state = saved[gname]

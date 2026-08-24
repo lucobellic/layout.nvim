@@ -269,20 +269,21 @@ local function buffer_window_config(tabpage)
   }
 end
 
----@param tabpage integer
----@return Layout.Feature.Rail.State
-local function ensure_state(tabpage)
-  local state = Rail.state[tabpage]
-  if state and vim.api.nvim_win_is_valid(state.winid) and vim.api.nvim_buf_is_valid(state.bufnr) then return state end
-
+---Create the scratch buffer used to render one rail.
+---@return integer bufnr
+local function create_rail_buffer()
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.bo[bufnr].buftype = 'nofile'
   vim.bo[bufnr].bufhidden = 'wipe'
   vim.bo[bufnr].swapfile = false
   vim.bo[bufnr].modifiable = false
+  return bufnr
+end
 
-  local config = Rail.opts and Rail.opts.mode == 'buffer' and buffer_window_config(tabpage) or float_window_config()
-  local winid = vim.api.nvim_open_win(bufnr, false, config)
+---Apply minimal window options and fixed sizing to a rail window.
+---@param winid integer
+---@return nil
+local function configure_rail_window(winid)
   vim.wo[winid].winhl = 'Normal:Normal'
   vim.wo[winid].wrap = false
   vim.wo[winid].cursorline = false
@@ -293,59 +294,96 @@ local function ensure_state(tabpage)
     vim.api.nvim_win_set_config(winid, { width = Rail.opts.width })
     vim.wo[winid].winfixwidth = true
   end
+end
+
+---@param tabpage integer
+---@return Layout.Feature.Rail.State
+local function ensure_state(tabpage)
+  local state = Rail.state[tabpage]
+  if state and vim.api.nvim_win_is_valid(state.winid) and vim.api.nvim_buf_is_valid(state.bufnr) then return state end
+
+  local bufnr = create_rail_buffer()
+  local config = Rail.opts and Rail.opts.mode == 'buffer' and buffer_window_config(tabpage) or float_window_config()
+  local winid = vim.api.nvim_open_win(bufnr, false, config)
+  configure_rail_window(winid)
 
   state = { bufnr = bufnr, winid = winid, entries = {} }
   Rail.state[tabpage] = state
   return state
 end
 
----Place selected panel entries into top, middle, and bottom rail sections.
----When ideal section ranges overlap, all entries are packed from the top.
+---Group statusline entries into configured top, middle, and bottom sections.
 ---@param entries Layout.Statusline.Entry[]
----@param height integer
----@return string[] lines
----@return table<integer, Layout.Statusline.Entry> entries_by_line
-local function layout_entries(entries, height)
-  ---@type table<string, Layout.Statusline.Entry[]>
+---@return table<string, Layout.Statusline.Entry[]>
+local function collect_sections(entries)
   local sections = { top = {}, middle = {}, bottom = {} }
   for section, side in pairs(Rail.opts and Rail.opts.groups or {}) do
     for _, entry in ipairs(entries) do
       if entry.side == side then sections[section][#sections[section] + 1] = entry end
     end
   end
+  return sections
+end
 
-  local starts = {
+---Calculate each section's ideal starting line.
+---@param sections table<string, Layout.Statusline.Entry[]>
+---@param height integer
+---@return table<string, integer>
+local function section_starts(sections, height)
+  return {
     top = 1,
     middle = math.floor((height - #sections.middle) / 2) + 1,
     bottom = height - #sections.bottom + 1,
   }
-  local ordered = { 'top', 'middle', 'bottom' }
+end
+
+---Return whether ideal section ranges cannot fit without intersecting.
+---@param sections table<string, Layout.Statusline.Entry[]>
+---@param starts table<string, integer>
+---@param height integer
+---@return boolean
+local function sections_overlap(sections, starts, height)
+  if #sections.top + #sections.middle + #sections.bottom > height then return true end
   local previous_end = 0
-  local overlap = #sections.top + #sections.middle + #sections.bottom > height
-  for _, name in ipairs(ordered) do
+  for _, name in ipairs({ 'top', 'middle', 'bottom' }) do
     if #sections[name] > 0 then
       local section_end = starts[name] + #sections[name] - 1
-      if starts[name] < 1 or starts[name] <= previous_end or section_end > height then overlap = true end
+      if starts[name] < 1 or starts[name] <= previous_end or section_end > height then return true end
       previous_end = section_end
     end
   end
+  return false
+end
 
+---Pack all sections contiguously when their ideal ranges overlap.
+---@param sections table<string, Layout.Statusline.Entry[]>
+---@return string[] lines
+---@return table<integer, Layout.Statusline.Entry> entries_by_line
+local function pack_sections(sections)
   local lines = {}
   local entries_by_line = {}
-  if overlap then
-    for _, name in ipairs(ordered) do
-      for _, entry in ipairs(sections[name]) do
-        lines[#lines + 1] = entry_text(entry)
-        entries_by_line[#lines] = entry
-      end
+  for _, name in ipairs({ 'top', 'middle', 'bottom' }) do
+    for _, entry in ipairs(sections[name]) do
+      lines[#lines + 1] = entry_text(entry)
+      entries_by_line[#lines] = entry
     end
-    return lines, entries_by_line
   end
+  return lines, entries_by_line
+end
 
+---Place sections at their top, middle, and bottom anchors.
+---@param sections table<string, Layout.Statusline.Entry[]>
+---@param starts table<string, integer>
+---@param height integer
+---@return string[] lines
+---@return table<integer, Layout.Statusline.Entry> entries_by_line
+local function anchor_sections(sections, starts, height)
+  local lines = {}
+  local entries_by_line = {}
   for _ = 1, height do
     lines[#lines + 1] = ''
   end
-  for _, name in ipairs(ordered) do
+  for _, name in ipairs({ 'top', 'middle', 'bottom' }) do
     for index, entry in ipairs(sections[name]) do
       local line = starts[name] + index - 1
       lines[line] = entry_text(entry)
@@ -355,6 +393,53 @@ local function layout_entries(entries, height)
   return lines, entries_by_line
 end
 
+---Place selected panel entries into top, middle, and bottom rail sections.
+---When ideal section ranges overlap, all entries are packed from the top.
+---Return whether any entry belongs to a side selected by the rail.
+---@param entries Layout.Statusline.Entry[]
+---@param height integer
+---@return string[] lines
+---@return table<integer, Layout.Statusline.Entry> entries_by_line
+local function layout_entries(entries, height)
+  local sections = collect_sections(entries)
+  local starts = section_starts(sections, height)
+  if sections_overlap(sections, starts, height) then return pack_sections(sections) end
+  return anchor_sections(sections, starts, height)
+end
+
+---@param entries Layout.Statusline.Entry[]
+---@param groups Layout.Statusline.Rail.Groups
+---@return boolean
+local function has_selected_entries(entries, groups)
+  local selected_sides = {}
+  for _, side in pairs(groups) do
+    selected_sides[side] = true
+  end
+  return vim.iter(entries):any(function(entry)
+    return selected_sides[entry.side] == true
+  end)
+end
+
+---Replace rail buffer contents and apply entry highlights.
+---@param state Layout.Feature.Rail.State
+---@param lines string[]
+---@param tabpage integer
+---Close every rail window and buffer across tabpages.
+---@return nil
+local function write_state(state, lines, tabpage)
+  vim.bo[state.bufnr].modifiable = true
+  vim.api.nvim_buf_set_lines(state.bufnr, 0, -1, false, lines)
+  vim.bo[state.bufnr].modifiable = false
+  vim.api.nvim_buf_clear_namespace(state.bufnr, HIGHLIGHT_NS, 0, -1)
+  for index, entry in pairs(state.entries) do
+    if Rail.hover_line[tabpage] == index then
+      add_highlight(state.bufnr, index, highlight(entry, true), 0, -1)
+    else
+      add_entry_highlights(state.bufnr, index, entry)
+    end
+  end
+end
+
 ---Render current group state into the active tabpage rail.
 ---@public
 ---@return nil
@@ -362,14 +447,7 @@ function Rail:render()
   if not self.opts or not self.opts.enabled then return end
   local tabpage = vim.api.nvim_get_current_tabpage()
   local entries = Statusline:get_entries()
-  local selected_sides = {}
-  for _, side in pairs(self.opts.groups) do
-    selected_sides[side] = true
-  end
-  local has_entries = vim.iter(entries):any(function(entry)
-    return selected_sides[entry.side] == true
-  end)
-  if not has_entries and self.opts.mode == 'float' then
+  if not has_selected_entries(entries, self.opts.groups) and self.opts.mode == 'float' then
     close_state(tabpage)
     return
   end
@@ -377,19 +455,7 @@ function Rail:render()
   local state = ensure_state(tabpage)
   local lines
   lines, state.entries = layout_entries(entries, vim.api.nvim_win_get_height(state.winid))
-
-  vim.bo[state.bufnr].modifiable = true
-  vim.api.nvim_buf_set_lines(state.bufnr, 0, -1, false, lines)
-  vim.bo[state.bufnr].modifiable = false
-  vim.api.nvim_buf_clear_namespace(state.bufnr, HIGHLIGHT_NS, 0, -1)
-  for index, entry in pairs(state.entries) do
-    local hovered = self.hover_line[tabpage] == index
-    if hovered then
-      add_highlight(state.bufnr, index, highlight(entry, true), 0, -1)
-    else
-      add_entry_highlights(state.bufnr, index, entry)
-    end
-  end
+  write_state(state, lines, tabpage)
 end
 
 ---Update the highlighted rail entry from a mouse position.
@@ -468,6 +534,86 @@ function Rail:on_click(line)
   end)
 end
 
+---@return nil
+local function close_all_states()
+  for _, tabpage in ipairs(vim.tbl_keys(Rail.state)) do
+    close_state(tabpage)
+  end
+end
+
+---Recreate rail state after setup unless a newer setup supersedes it.
+---@param generation integer
+---Schedule a render or full refresh after window lifecycle events.
+---@return nil
+local function schedule_state_reset(generation)
+  vim.schedule(function()
+    if Rail.setup_generation ~= generation then return end
+    close_all_states()
+    if Rail.opts and Rail.opts.enabled then Rail:refresh() end
+  end)
+end
+
+---Track the latest editor window and reject focus entering buffer rails.
+---@return nil
+local function schedule_content_refresh()
+  vim.schedule(function()
+    if Rail.opts and Rail.opts.mode == 'buffer' then
+      Rail:refresh()
+    else
+      Rail:render()
+    end
+  end)
+end
+
+---Discard state associated with closed tabpages.
+---@return nil
+local function track_entered_window()
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local winid = vim.api.nvim_get_current_win()
+  local state = Rail.state[tabpage]
+  if state and state.winid == winid then
+    reject_buffer_rail_focus()
+  elseif vim.api.nvim_win_get_config(winid).relative == '' then
+    Rail.last_win[tabpage] = winid
+  end
+end
+
+---@return nil
+local function prune_closed_tabs()
+  for tabpage in pairs(Rail.state) do
+    if not vim.api.nvim_tabpage_is_valid(tabpage) then
+      close_state(tabpage)
+      Rail.last_win[tabpage] = nil
+    end
+  end
+end
+
+---Register rail rendering, focus, resize, and tab lifecycle hooks.
+---@param augroup integer
+---@return nil
+local function wire_lifecycle_autocmds(augroup)
+  vim.api.nvim_create_autocmd({ 'BufWinEnter', 'WinClosed' }, {
+    group = augroup,
+    callback = schedule_content_refresh,
+  })
+  vim.api.nvim_create_autocmd('WinEnter', {
+    group = augroup,
+    callback = track_entered_window,
+  })
+  vim.api.nvim_create_autocmd({ 'VimResized', 'TabEnter' }, {
+    group = augroup,
+    callback = function()
+      vim.schedule(function()
+        Rail:refresh()
+      end)
+    end,
+  })
+  vim.api.nvim_create_autocmd('TabClosed', {
+    group = augroup,
+    callback = prune_closed_tabs,
+  })
+end
+
 ---Initialize rail options and lifecycle autocommands.
 ---@public
 ---@param opts Layout.Statusline.Rail.Opts
@@ -486,59 +632,9 @@ function Rail:setup(opts, clickable, pick_key_pose)
 
   if self.augroup then pcall(vim.api.nvim_del_augroup_by_id, self.augroup) end
   self.augroup = vim.api.nvim_create_augroup('LayoutRail', { clear = true })
-  vim.schedule(function()
-    if self.setup_generation ~= generation then return end
-    for _, tabpage in ipairs(vim.tbl_keys(self.state)) do
-      close_state(tabpage)
-    end
-    if self.opts and self.opts.enabled then self:refresh() end
-  end)
+  schedule_state_reset(generation)
   if not opts.enabled then return end
-
-  vim.api.nvim_create_autocmd({ 'BufWinEnter', 'WinClosed' }, {
-    group = self.augroup,
-    callback = function()
-      vim.schedule(function()
-        if self.opts and self.opts.mode == 'buffer' then
-          self:refresh()
-        else
-          self:render()
-        end
-      end)
-    end,
-  })
-  vim.api.nvim_create_autocmd('WinEnter', {
-    group = self.augroup,
-    callback = function()
-      local tabpage = vim.api.nvim_get_current_tabpage()
-      local winid = vim.api.nvim_get_current_win()
-      local state = self.state[tabpage]
-      if state and state.winid == winid then
-        reject_buffer_rail_focus()
-      elseif vim.api.nvim_win_get_config(winid).relative == '' then
-        self.last_win[tabpage] = winid
-      end
-    end,
-  })
-  vim.api.nvim_create_autocmd({ 'VimResized', 'TabEnter' }, {
-    group = self.augroup,
-    callback = function()
-      vim.schedule(function()
-        self:refresh()
-      end)
-    end,
-  })
-  vim.api.nvim_create_autocmd('TabClosed', {
-    group = self.augroup,
-    callback = function()
-      for tabpage in pairs(self.state) do
-        if not vim.api.nvim_tabpage_is_valid(tabpage) then
-          close_state(tabpage)
-          self.last_win[tabpage] = nil
-        end
-      end
-    end,
-  })
+  wire_lifecycle_autocmds(self.augroup)
 end
 
 return Rail

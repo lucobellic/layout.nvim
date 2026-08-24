@@ -24,7 +24,7 @@
 --- Picker configuration for a group — controls how the group appears in the
 --- statusline and how it is selected via the picker.
 ---@class Layout.Picker
----@field icon? string Nerdfont glyph for the group.
+---@field icon? string Nerd Font glyph for the group.
 ---@field key? string Single char; pressing this key after calling pick() toggles the group.
 
 --- Group config — position in the groups array is declaration order.
@@ -34,7 +34,7 @@
 ---@class Layout.Group.Entry
 ---@field name string Group identifier (used in Layout toggle, restore, picker).
 ---@field picker? Layout.Picker Picker display and selection configuration.
----@field icon? string Nerdfont glyph for the group (extracted from picker during normalization).
+---@field icon? string Nerd Font glyph for the group (extracted from picker during normalization).
 ---@field key? string Single-char toggle key (extracted from picker during normalization).
 ---@field views table<string, Layout.View.Entry> View entries keyed by name.
 ---@field _order? string[] View names in declaration order.
@@ -258,6 +258,25 @@ function Config.merge(opts)
   return merged
 end
 
+---Register valid configured views in declaration order on a normalized group.
+---@param side Layout.Side
+---@param group Layout.Group.Config
+---@param group_entry Layout.Group.Entry
+---@return nil
+local function normalize_group_views(side, group, group_entry)
+  if not group.views or type(group.views) ~= 'table' or group.views[1] == nil then return end
+  for _, view in ipairs(group.views) do
+    if view.name and view.filter ~= nil then
+      if group_entry.views[view.name] then
+        error(('%s.%s contains duplicate view name %q'):format(side, group.name, view.name))
+      end
+      if view.size ~= nil then Size.validate(view.size, side .. '.' .. group.name .. '.' .. view.name .. '.size') end
+      group_entry.views[view.name] = view
+      group_entry._order[#group_entry._order + 1] = view.name
+    end
+  end
+end
+
 --- Normalize a merged config into a structured registry.
 ---
 --- Groups are declared in the `groups` array and views in each group's
@@ -288,10 +307,12 @@ function Config.normalize(config)
     local sc = config[side]
     if not sc then return reg end
 
-    Size.validate(sc.size or defaults[side].size, side .. '.size')
+    ---@type Layout.Size
+    local size = assert(sc.size or defaults[side].size)
+    Size.validate(size, side .. '.size')
 
     ---@type Layout.Side.Entry
-    local side_entry = { size = sc.size or defaults[side].size, groups = {}, _order = {}, align = sc.align }
+    local side_entry = { size = size, groups = {}, _order = {}, align = sc.align }
 
     for _, g in ipairs(groups_from(sc)) do
       if g.name then
@@ -307,18 +328,7 @@ function Config.normalize(config)
           _order = {},
         }
 
-        if g.views and type(g.views) == 'table' and g.views[1] ~= nil then
-          for _, vw in ipairs(g.views) do
-            if vw.name and vw.filter ~= nil then
-              if group_entry.views[vw.name] then
-                error(('%s.%s contains duplicate view name %q'):format(side, g.name, vw.name))
-              end
-              if vw.size ~= nil then Size.validate(vw.size, side .. '.' .. g.name .. '.' .. vw.name .. '.size') end
-              group_entry.views[vw.name] = vw
-              group_entry._order[#group_entry._order + 1] = vw.name
-            end
-          end
-        end
+        normalize_group_views(side, g, group_entry)
 
         side_entry.groups[g.name] = group_entry
         side_entry._order[#side_entry._order + 1] = g.name
