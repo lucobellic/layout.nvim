@@ -9,6 +9,8 @@ local Workspace = {
   state = {},
 }
 
+local View = require('layout.entities.view')
+
 --- Ensure the current tabpage has a state entry.
 ---@package
 ---@return table<Layout.Side, table<string, boolean>>
@@ -49,6 +51,9 @@ end
 ---@param group_name string
 ---@return boolean
 function Workspace:is_open(side, group_name)
+  for match in View:iter_matches() do
+    if match.side == side and match.group == group_name then return true end
+  end
   local st = self:ensure_tab()
   return st ~= nil and st[side] ~= nil and st[side][group_name] == true
 end

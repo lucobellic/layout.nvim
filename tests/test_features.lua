@@ -243,6 +243,33 @@ describe('features.toggle', function()
     expect.equality(shown, false)
   end)
 
+  it('closes an externally opened matching group instead of opening a duplicate', function()
+    -- Given: a matching tool window exists without having been opened through layout.nvim
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          explorer = {
+            views = {
+              filesystem = { filter = 'toolL', open = 'let g:duplicate_opened = 1' },
+            },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.cmd('belowright split')
+    child.cmd('enew')
+    U.make_tool_win(child, 'toolL')
+    child.lua([[require('layout.entities.workspace'):clear()]])
+
+    -- When: the matching group is toggled
+    child.lua([[require('layout.features.toggle').toggle_group('left', 'explorer')]])
+
+    -- Then: the existing window closes and its opener is not run again
+    expect.equality(child.lua_get([[vim.g.duplicate_opened]]), vim.NIL)
+    expect.equality(child.lua_get([[vim.iter(require('layout.entities.view'):iter_matches()):count()]]), 0)
+  end)
+
   it('leaves a disabled buffer open and manages it again after re-enabling', function()
     -- Given: a tool buffer already arranged in the left panel
     -- When: it is disabled before the left panel is closed
