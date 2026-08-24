@@ -50,43 +50,58 @@ require('lazy').setup({
       opts = {
         left = {
           size = 30,
-          explorer = {
-            picker = { icon = '', key = 'e' },
-            filesystem = {
-              filter = function(buf)
-                return vim.bo[buf].filetype == 'neo-tree' and vim.b[buf].neo_tree_source == 'filesystem'
-              end,
-              open = 'Neotree action=show source=filesystem position=left',
+          groups = {
+            {
+              name = 'explorer',
+              picker = { icon = '', key = 'e' },
+              views = {
+                {
+                  name = 'filesystem',
+                  filter = function(buf)
+                    return vim.bo[buf].filetype == 'neo-tree' and vim.b[buf].neo_tree_source == 'filesystem'
+                  end,
+                  open = 'Neotree action=show source=filesystem position=left',
+                },
+              },
             },
           },
         },
         right = {
           size = 40,
-          buffers = {
-            picker = { icon = '', key = 'l' },
-            buffers_view = {
-              filter = function(buf)
-                return vim.bo[buf].filetype == 'neo-tree' and vim.b[buf].neo_tree_source == 'buffers'
-              end,
-              open = 'Neotree action=show source=buffers position=right',
+          groups = {
+            {
+              name = 'buffers',
+              picker = { icon = '', key = 'l' },
+              views = {
+                {
+                  name = 'buffers_view',
+                  filter = function(buf)
+                    return vim.bo[buf].filetype == 'neo-tree' and vim.b[buf].neo_tree_source == 'buffers'
+                  end,
+                  open = 'Neotree action=show source=buffers position=right',
+                },
+              },
             },
           },
         },
         bottom = {
           size = 15,
-          git = {
-            picker = { icon = '', key = 'b' },
-            git_status = {
-              filter = function(buf)
-                return vim.bo[buf].filetype == 'neo-tree' and vim.b[buf].neo_tree_source == 'git_status'
-              end,
-              open = 'Neotree action=show source=git_status position=bottom',
+          groups = {
+            {
+              name = 'git',
+              picker = { icon = '', key = 'b' },
+              views = {
+                {
+                  name = 'git_status',
+                  filter = function(buf)
+                    return vim.bo[buf].filetype == 'neo-tree' and vim.b[buf].neo_tree_source == 'git_status'
+                  end,
+                  open = 'Neotree action=show source=git_status position=bottom',
+                },
+              },
             },
           },
         },
-      },
-      picker = {
-        prefix = '<leader>;',
       },
     },
     {

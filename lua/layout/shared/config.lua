@@ -95,11 +95,11 @@
 
 --- Top-level user configuration passed to `require("layout").setup(opts)`.
 ---@class Layout.Config
----@field left? Layout.Side.Entry Left panel configuration.
----@field right? Layout.Side.Entry Right panel configuration.
----@field bottom? Layout.Side.Entry Bottom panel configuration.
+---@field left? Layout.Side.Config Left panel configuration.
+---@field right? Layout.Side.Config Right panel configuration.
+---@field bottom? Layout.Side.Config Bottom panel configuration.
 ---@field live_resize_debounce? integer Quiet period in ms before automatic placement resumes after panel/editor resizing.
----@field workspaces Layout.Workspaces
+---@field workspaces? Layout.Workspaces
 ---@field statusline? Layout.Statusline.Opts Statusline rendering options for group icons.
 ---@field events? string[] Autocommand events that trigger re-evaluation of all views.  See `:help autocmd-events`.
 
@@ -107,7 +107,7 @@
 ---@class Layout.View.Entry
 ---@field name string View identifier used in commands, restoration, and display title.
 ---@field filter string|fun(buf: integer, win: integer): boolean
----@field open string|fun()
+---@field open? string|fun()
 ---@field size? Layout.Size Stacking height for left/right views or width for bottom views.
 ---@field bo? table<string, any>
 ---@field wo? table<string, any>
@@ -125,6 +125,17 @@
 ---@field align? Layout.Align Bottom-only alignment (defaults to "full")
 ---@field groups? table<string, Layout.Group.Entry>
 ---@field _order? string[] Group names in declaration order
+
+---@class Layout.Group.Config
+---@field name string
+---@field picker? Layout.Picker
+---@field views? Layout.View.Entry[]
+
+---@class Layout.Side.Config
+---@field size? Layout.Size Width for left/right panels or height for the bottom panel.
+---@field align? Layout.Align Bottom-only alignment.
+---@field groups? Layout.Group.Config[] Groups in display and placement order.
+---@field [integer]? Layout.Group.Config Groups may alternatively be placed directly on the side table.
 
 --- Normalized layout registry produced by `normalize()`.
 --- The registry is a programmatic representation of the user config,
@@ -181,8 +192,8 @@ local Config = {
   defaults = defaults,
 }
 
-local Size = require('layout.shared.size')
 local Constants = require('layout.shared.constants')
+local Size = require('layout.shared.size')
 
 ---@type table<string, boolean>
 local VALID_ALIGNMENTS = { contained = true, left_aligned = true, right_aligned = true, full = true }
@@ -220,15 +231,18 @@ function Config.merge(opts)
   if rail and rail.mode ~= 'float' and rail.mode ~= 'buffer' then
     error('statusline.rail.mode must be "float" or "buffer"')
   end
-  if rail and type(rail.hover) ~= 'boolean' then
-    error('statusline.rail.hover must be a boolean')
-  end
+  if rail and type(rail.hover) ~= 'boolean' then error('statusline.rail.hover must be a boolean') end
   if rail and (type(rail.width) ~= 'number' or rail.width < 1 or math.floor(rail.width) ~= rail.width) then
     error('statusline.rail.width must be a positive integer')
   end
   if
     rail
-    and (type(rail.padding) ~= 'number' or rail.padding < 0 or math.floor(rail.padding) ~= rail.padding or rail.padding >= rail.width)
+    and (
+      type(rail.padding) ~= 'number'
+      or rail.padding < 0
+      or math.floor(rail.padding) ~= rail.padding
+      or rail.padding >= rail.width
+    )
   then
     error('statusline.rail.padding must be a non-negative integer smaller than statusline.rail.width')
   end
@@ -281,9 +295,7 @@ function Config.normalize(config)
 
     for _, g in ipairs(groups_from(sc)) do
       if g.name then
-        if side_entry.groups[g.name] then
-          error(('%s contains duplicate group name %q'):format(side, g.name))
-        end
+        if side_entry.groups[g.name] then error(('%s contains duplicate group name %q'):format(side, g.name)) end
         local pk = g.picker or {}
         ---@type Layout.Group.Entry
         local group_entry = {
