@@ -408,6 +408,29 @@ describe('buffer icon rail', function()
     expect.equality(#child.api.nvim_tabpage_list_wins(0), 2)
   end)
 
+  it('creates the rail from a normal window when setup runs inside a float', function()
+    -- Given: a floating window is current when buffer-rail setup is called
+    local cfg = U.test_config({ left = { groups = {} } })
+    cfg.statusline = {
+      rail = { enabled = true, mode = 'buffer', width = 2, position = 'left', groups = { top = 'left' } },
+    }
+    child.lua([[
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_open_win(buf, true, {
+        relative = 'editor', row = 1, col = 1, width = 10, height = 2,
+      })
+    ]])
+
+    -- When: the normal split rail is initialized
+    child.lua('require("layout").setup(' .. vim.inspect(cfg) .. ')')
+    wait_for_rail()
+
+    -- Then: creation succeeds and the rail itself is a normal window
+    local rail = child.lua_get([=[require('layout.features.rail').state[vim.api.nvim_get_current_tabpage()]]=])
+    expect.equality(child.api.nvim_win_get_config(rail.winid).relative, '')
+    expect.equality(child.api.nvim_win_get_width(rail.winid), 2)
+  end)
+
   it('preserves a user-defined global winwidth when creating the rail without focusing it', function()
     -- Given: a user-defined global winwidth and a configured narrow buffer rail
     local cfg = U.test_config({ left = { groups = {} } })

@@ -251,11 +251,19 @@ local function float_window_config()
   }
 end
 
+---@param tabpage integer
 ---@return vim.api.keyset.win_config
-local function buffer_window_config()
+local function buffer_window_config(tabpage)
+  local target = vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_get_config(target).relative ~= '' then
+    target = vim.iter(vim.api.nvim_tabpage_list_wins(tabpage)):find(function(winid)
+      return vim.api.nvim_win_get_config(winid).relative == ''
+    end)
+  end
+  if not target then error('layout rail: no normal window available for split creation') end
   return {
     split = Rail.opts and Rail.opts.position or 'left',
-    win = vim.api.nvim_get_current_win(),
+    win = target,
     style = 'minimal',
     noautocmd = true,
   }
@@ -273,7 +281,7 @@ local function ensure_state(tabpage)
   vim.bo[bufnr].swapfile = false
   vim.bo[bufnr].modifiable = false
 
-  local config = Rail.opts and Rail.opts.mode == 'buffer' and buffer_window_config() or float_window_config()
+  local config = Rail.opts and Rail.opts.mode == 'buffer' and buffer_window_config(tabpage) or float_window_config()
   local winid = vim.api.nvim_open_win(bufnr, false, config)
   vim.wo[winid].winhl = 'Normal:Normal'
   vim.wo[winid].wrap = false
