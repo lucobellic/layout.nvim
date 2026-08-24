@@ -1,10 +1,38 @@
-# layout.nvim
+<h1 align="center">
+  layout.nvim
+</h1>
 
-An opinionated panel manager for Neovim that brings standard IDE-style
-window arrangements with reserved left/right/bottom panels, declarative view
-configuration, persistent per-project layouts, and zero dependencies.
+<p align="center">
+  <strong>IDE style panel management for Neovim</strong>
+</p>
 
-Requires Neovim 0.10 or newer.
+<p align="center">
+  <img src="https://img.shields.io/github/v/tag/lucobellic/layout.nvim?label=version&style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/Neovim-0.10%2B-57A143?style=for-the-badge&logo=neovim&logoColor=white" alt="Neovim 0.10 or newer">
+  <img src="https://img.shields.io/github/issues/lucobellic/layout.nvim?style=for-the-badge" alt="Issues">
+  <img src="https://img.shields.io/github/last-commit/lucobellic/layout.nvim?style=for-the-badge" alt="Last Commit">
+</p>
+
+![layout.nvim](doc/images/layout.nvim.png)
+
+<p align="center">
+  An opinionated panel manager for Neovim that brings standard IDE style window
+  arrangements with reserved left, right, and bottom panels, and declarative view configuration.
+</p>
+
+> [!IMPORTANT]
+> This plugin is vibe coded with GPT-5.6 Sol.
+
+## Installation
+
+With [lazy.nvim](https://github.com/folke/lazy.nvim):
+
+```lua
+{
+  'lucobellic/layout.nvim',
+  opts = {},
+}
+```
 
 ## Setup
 
@@ -33,7 +61,7 @@ require('layout').setup({
   right = { size = 40, groups = {} },
   bottom = {
     size = 15,
-    align = 'full', -- contained, left_aligned, right_aligned, or full
+    align = 'full',
     groups = {},
   },
   events = { 'FileType', 'WinEnter', 'BufWinEnter' },
@@ -50,6 +78,33 @@ Each view may also define `size`, `bo`, and `wo`. View `size` controls its
 stacking dimension within the panel. `bo` and `wo` apply buffer-local and
 window-local options after placement.
 
+### Bottom Alignment
+
+`bottom.align` controls which columns the bottom panel spans. It defaults to
+`full` and accepts four values (`L`, `C`, `R`, and `B` represent the left,
+center, right, and bottom regions):
+
+```text
+contained                full
+┌───┬───────┬───┐        ┌───┬───────┬───┐
+│ L │   C   │ R │        │ L │   C   │ R │
+│   ├───────┤   │        ├───┴───────┴───┤
+│   │   B   │   │        │       B       │
+└───┴───────┴───┘        └───────────────┘
+
+left_aligned             right_aligned
+┌─────┬─────┬───┐        ┌───┬─────┬─────┐
+│  L  │  C  │ R │        │ L │  C  │  R  │
+├─────┴─────┤   │        │   ├─────┴─────┤
+│     B     │   │        │   │     B     │
+└───────────┴───┘        └───┴───────────┘
+```
+
+- `contained`: bottom spans the center, left and right keep full height.
+- `left_aligned`: bottom spans left and center, right keeps full height.
+- `right_aligned`: bottom spans center and right, left keeps full height.
+- `full`: bottom spans the entire layout width.
+
 ## Commands
 
 - `:Layout toggle [side] <group>` opens or closes a group. The side is required when names are ambiguous.
@@ -64,11 +119,13 @@ Public Lua helpers include `require('layout').pick([refresh])`,
 `set_buffer_enabled(bufnr, enabled)`. The last helper temporarily excludes an
 already managed buffer from placement.
 
-## Statusline And Rail
+## Statusline
 
 `get_statusline(side)` returns one statusline-formatted string per configured
 group icon. Entries support active/inactive highlights, click regions, and
 picker-key rendering.
+
+## Rail
 
 The optional icon rail shows every configured group in a fixed-width window.
 It can either float over the editor or reserve a normal buffer window:
@@ -97,14 +154,8 @@ require('layout').setup({
 })
 ```
 
-The rail uses the existing statusline highlights, picker keys, `pick_key_pose`,
-active state, and click handling. In picker mode, `left` and `left_separator`
-place the key before the icon, `right` and `right_separator` place it after the
-icon, and `icon` replaces the icon. Float mode overlays the outermost editor column. Buffer
-mode reserves a fixed-width, full-height split outside all left, right,
-and bottom panels. Buffer rails are clickable. While one is
-entered, layout.nvim returns focus to an editor window so the rail can remain
-narrower than the global `winwidth` without changing that option.
+The rail reuses statusline styling, picker keys, and click handling.
+Float mode overlays an editor edge, buffer mode reserves a full-height split there.
 
 Toggle the configured rail globally at runtime:
 
@@ -112,9 +163,13 @@ Toggle the configured rail globally at runtime:
 require('layout').toggle_rail()
 ```
 
-Icons wider than the configured rail are clipped by display width. Groups with
-an icon but no key remain visible and clickable, but do not participate in
-keyboard picking.
+Icons wider than the configured rail are clipped by display width.
+Groups with an icon but no key remain visible and clickable, but do not
+participate in keyboard picking.
+
+Each rail section selects a configured panel side. Unmapped sides are omitted.
+When the sections do not fit at their ideal anchors, they are packed in top,
+middle, bottom order.
 
 ## Persistence
 
@@ -135,6 +190,9 @@ Run the built-in diagnostics after configuring the plugin:
 The report checks the Neovim version, setup and registry state, workspace
 storage access, and metadata for managed windows in the current tabpage.
 
-Each rail section selects a configured panel side. Unmapped sides are omitted.
-When the sections do not fit at their ideal anchors, they are packed in top,
-middle, bottom order.
+## Acknowledgements
+
+layout.nvim is inspired by [edgy.nvim](https://github.com/folke/edgy.nvim) and
+[edgy-group.nvim](https://github.com/lucobellic/edgy-group.nvim).
+It combines the roles of both plugins into a single plugin, and unlike
+edgy.nvim, layout.nvim preserves Neovim's default window-resizing behavior.
