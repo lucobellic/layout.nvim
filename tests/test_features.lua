@@ -119,6 +119,30 @@ describe('features.toggle', function()
     expect.equality(after, before + 2)
   end)
 
+  it('reports failed open commands without marking the group open', function()
+    -- Given: a group whose configured opener raises an editor error
+    local cfg = U.test_config({
+      left = {
+        groups = {
+          broken = {
+            views = {
+              tool = { filter = 'broken-tool', open = 'LayoutCommandThatDoesNotExist' },
+            },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.lua([[vim.notify = function(message, level) _G._open_error = { message, level } end]])
+
+    -- When: the group is opened
+    child.lua([[require('layout.features.toggle').open_group('left', 'broken')]])
+
+    -- Then: the failure is visible and in-memory state remains closed
+    expect.equality(child.lua_get([[_G._open_error[1]:match('Failed to open left.broken.tool') ~= nil]]), true)
+    expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('left', 'broken')]]), false)
+  end)
+
   it('keeps the editor cursor on the same screen row when opening multiple full-width bottom views', function()
     -- Given: splitkeep=screen and an editor cursor that remains visible while
     -- two bottom windows are opened one after another.
@@ -134,42 +158,45 @@ describe('features.toggle', function()
       vim.cmd('redraw')
     ]])
     local screen_row = child.lua_get('vim.fn.winline()')
-    U.setup_config(child, U.test_config({
-      bottom = {
-        size = 8,
-        align = 'full',
-        groups = {
-          tools = {
-            views = {
-              first = {
-                filter = 'toolB1',
-                open = function()
-                  vim.schedule(function()
-                    vim.cmd('belowright split')
-                    local buf = vim.api.nvim_create_buf(false, true)
-                    vim.api.nvim_win_set_buf(0, buf)
-                    vim.bo[buf].filetype = 'toolB1'
-                    vim.api.nvim_set_current_win(_G._cursor_editor)
-                  end)
-                end,
-              },
-              second = {
-                filter = 'toolB2',
-                open = function()
-                  vim.schedule(function()
-                    vim.cmd('belowright split')
-                    local buf = vim.api.nvim_create_buf(false, true)
-                    vim.api.nvim_win_set_buf(0, buf)
-                    vim.bo[buf].filetype = 'toolB2'
-                    vim.api.nvim_set_current_win(_G._cursor_editor)
-                  end)
-                end,
+    U.setup_config(
+      child,
+      U.test_config({
+        bottom = {
+          size = 8,
+          align = 'full',
+          groups = {
+            tools = {
+              views = {
+                first = {
+                  filter = 'toolB1',
+                  open = function()
+                    vim.schedule(function()
+                      vim.cmd('belowright split')
+                      local buf = vim.api.nvim_create_buf(false, true)
+                      vim.api.nvim_win_set_buf(0, buf)
+                      vim.bo[buf].filetype = 'toolB1'
+                      vim.api.nvim_set_current_win(_G._cursor_editor)
+                    end)
+                  end,
+                },
+                second = {
+                  filter = 'toolB2',
+                  open = function()
+                    vim.schedule(function()
+                      vim.cmd('belowright split')
+                      local buf = vim.api.nvim_create_buf(false, true)
+                      vim.api.nvim_win_set_buf(0, buf)
+                      vim.bo[buf].filetype = 'toolB2'
+                      vim.api.nvim_set_current_win(_G._cursor_editor)
+                    end)
+                  end,
+                },
               },
             },
           },
         },
-      },
-    }))
+      })
+    )
 
     -- When: both views are opened and arranged into the bottom panel.
     child.lua([[require('layout.features.toggle').open_group('bottom', 'tools')]])
