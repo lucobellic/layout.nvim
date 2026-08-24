@@ -3,8 +3,8 @@ name: luals
 description: >
   Use LuaLS (EmmyLua) annotations for all Lua type documentation. Apply
   @class/@field/@param/@return/@type/@alias annotations to new and modified
-  code. Follow the layout.nvim conventions: prefixed type names, annotations
-  on all functions, @public on module exports.
+  code. Follow the layout.nvim conventions: prefixed type names, typed
+  parameters and meaningful return values, @public on module exports.
 ---
 
 # LuaLS Documentation Style
@@ -40,9 +40,13 @@ before any code. Prefix type names with the module namespace (e.g. `Foo.Spec`,
 
 ## Function Annotations
 
-Every function — public and private — must carry `---@param` and `---@return`
-annotations describing its types. Public module functions additionally use
-`---@public`.
+Every function — public and private — must carry `---@param` annotations for
+its parameters and `---@return` annotations for values it actually returns.
+
+Functions that return no value must omit `---@return`
+never write `---@return nil`.
+
+Public module functions additionally use `---@public`.
 
 ```lua
 ---@class Foo
@@ -66,6 +70,7 @@ end
 
 - Use multiple `---@return` lines for multiple return values.
 - Make optional returns explicit with `?` suffix (e.g. `---@return integer?`).
+- Omit `---@return` entirely for procedures that do not return a value.
 - Prefix the module table with `---@class ModName` for type-aware completions.
 
 ## Variable Annotations
@@ -117,7 +122,9 @@ Each member can have an inline `# comment` for hover documentation.
 
 ## Do Not
 
-- Omit `---@param`/`---@return` on any function — even local helpers.
+- Write `---@return nil`; procedures must not have a return annotation.
+- Omit `---@param` annotations for declared parameters or `---@return`
+  annotations for values a function returns.
 - Use `---` doc comments for plain explanatory text; use `--` instead.
 - Create types in function bodies — all type definitions go at module top.
 - Skip `---@class` on the module table `M`.
