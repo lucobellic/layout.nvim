@@ -1,0 +1,43 @@
+name: Vimdoc
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+      - .github/workflows/vimdoc.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vimdoc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vimdoc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out layout.nvim
+        uses: actions/checkout@v5
+
+      - name: Generate vimdoc
+        uses: kdheepak/panvimdoc@v4.0.1
+        with:
+          vimdoc: layout
+          pandoc: README.md
+          version: Neovim >= 0.10.0
+          description: IDE style panel management for Neovim
+          toc: true
+          demojify: true
+          dedupsubheadings: true
+          treesitter: true
+          ignorerawblocks: true
+
+      - name: Commit generated vimdoc
+        uses: stefanzweifel/git-auto-commit-action@v7.2.0
+        with:
+          commit_message: 'docs: generate vimdoc'
+          file_pattern: doc/layout.txt
