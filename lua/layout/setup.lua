@@ -12,6 +12,7 @@ local Config = require('layout.shared.config')
 local Constants = require('layout.shared.constants')
 local Group = require('layout.entities.group')
 local Panel = require('layout.entities.panel')
+local PanelSize = require('layout.entities.panel.model.size')
 local Rail = require('layout.features.rail')
 local Restore = require('layout.features.restore')
 local Statusline = require('layout.features.statusline')
@@ -25,6 +26,7 @@ local ViewState = require('layout.shared.view_state')
 function M.setup(opts)
   local resolved = Config.merge(opts)
   local registry = Config.normalize(resolved)
+  PanelSize:setup(resolved.tabpage_scoped_sizes)
 
   -- Allow windows to shrink to zero so user-initiated center splits and
   -- closes do not push panel windows out of their declared size.  With the

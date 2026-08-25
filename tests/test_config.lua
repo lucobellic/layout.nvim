@@ -127,6 +127,17 @@ describe('config.normalize', function()
       expect.equality(padding_ok, false)
     end)
 
+    it('keeps sizes per tabpage by default and rejects invalid values', function()
+      -- Given: no explicit size scope and a non-boolean override
+      -- When: both configurations are merged
+      local merged = config.merge({})
+      local invalid_ok = pcall(config.merge, { tabpage_scoped_sizes = 'yes' })
+
+      -- Then: tabpage-local sizing is enabled and invalid values fail early
+      expect.equality(merged.tabpage_scoped_sizes, true)
+      expect.equality(invalid_ok, false)
+    end)
+
     it('rejects invalid alignment and pick-key positions during configuration', function()
       -- Given: unsupported values for closed configuration enums
       -- When: the configurations are merged

@@ -1,10 +1,16 @@
 --- Panel size preferences and placement runtime state.
 ---
---- Preferred sizes are shared across tabpages. Applied geometry, topology,
---- and placement transaction state are tab-local so events in one tab cannot
---- be mistaken for user resizing in another.
+--- Preferred sizes are tab-local by default and can be configured as shared.
+--- Applied geometry, topology, and placement transaction state are always
+--- tab-local so events in one tab cannot be mistaken for resizing in another.
 
----@class Layout.Panel.Model.Size.Runtime
+---@class Layout.Panel.Model.Size.Preferences
+---@field sizes table<Layout.Side, Layout.Size?>
+---@field configured table<Layout.Side, Layout.Size?>
+---@field slot_sizes table<string, Layout.Size?>
+---@field configured_slots table<string, Layout.Size?>
+
+---@class Layout.Panel.Model.Size.Runtime: Layout.Panel.Model.Size.Preferences
 ---@field applied table<Layout.Side, integer?> Dimensions committed by the last successful placement.
 ---@field applied_slots table<string, integer?> Stacking dimensions committed for managed views.
 ---@field placed_windows table<integer, boolean>? Normal-window set committed by the last successful placement.
@@ -21,12 +27,14 @@
 ---| '"ignored"' # Capture is locked by placement or editor resizing.
 
 ---@class Layout.Panel.Model.Size
----@field private sizes table<Layout.Side, Layout.Size?> Shared tracked panel preferences.
+---@field private tabpage_scoped boolean Whether preferences are stored per tabpage.
+---@field private sizes table<Layout.Side, Layout.Size?> Shared tracked panel preferences when tabpage scoping is disabled.
 ---@field private configured table<Layout.Side, Layout.Size?> Configured fallback used to preserve absolute/relative mode.
----@field private slot_sizes table<string, Layout.Size?> Shared tracked view preferences.
+---@field private slot_sizes table<string, Layout.Size?> Shared tracked view preferences when tabpage scoping is disabled.
 ---@field private configured_slots table<string, Layout.Size?> Configured view sizes used to preserve absolute/relative mode.
 ---@field private runtime table<integer, Layout.Panel.Model.Size.Runtime> Runtime state keyed by tabpage handle.
 local Size = {
+  tabpage_scoped = true,
   sizes = {},
   configured = {},
   slot_sizes = {},
@@ -56,9 +64,20 @@ local function runtime_for(tabpage)
       editor_resized = false,
       capture_invalid = false,
       placing = false,
+      sizes = {},
+      configured = {},
+      slot_sizes = {},
+      configured_slots = {},
     }
   end
   return Size.runtime[id]
+end
+
+--- Return the preference storage selected by the configured scope.
+---@return Layout.Panel.Model.Size.Preferences
+local function preferences_for_current_tab()
+  if Size.tabpage_scoped then return runtime_for() end
+  return Size
 end
 
 ---@param win integer
@@ -177,6 +196,7 @@ end
 ---@return boolean changed_preference
 ---@return boolean observed_managed_side
 local function capture_dimensions(wins, runtime, changed)
+  local preferences = preferences_for_current_tab()
   local sides = managed_sides(wins, changed)
   local observed = next(sides) ~= nil
   if not observed then return false, false end
@@ -186,12 +206,12 @@ local function capture_dimensions(wins, runtime, changed)
   for side, actual in pairs(panel_dimensions(wins, sides)) do
     local previous = runtime.applied[side]
     if previous and actual ~= previous then
-      local preference = Size.sizes[side] or Size.configured[side]
+      local preference = preferences.sizes[side] or preferences.configured[side]
       if preference and SharedSize.is_relative(preference) then
         local container = side == 'bottom' and editor_height or editor_width
-        Size.sizes[side] = SharedSize.to_fraction(actual, container)
+        preferences.sizes[side] = SharedSize.to_fraction(actual, container)
       else
-        Size.sizes[side] = math.max(1, actual)
+        preferences.sizes[side] = math.max(1, actual)
       end
       runtime.applied[side] = actual
       captured = true
@@ -203,17 +223,26 @@ local function capture_dimensions(wins, runtime, changed)
     local side = slot_sides[key]
     local previous = runtime.applied_slots[key]
     if side and counts[side] > 1 and previous and actual ~= previous then
-      local preference = Size.slot_sizes[key] or Size.configured_slots[key]
+      local preference = preferences.slot_sizes[key] or preferences.configured_slots[key]
       if preference and SharedSize.is_relative(preference) then
-        Size.slot_sizes[key] = SharedSize.to_fraction(actual, totals[side])
+        preferences.slot_sizes[key] = SharedSize.to_fraction(actual, totals[side])
       else
-        Size.slot_sizes[key] = math.max(1, actual)
+        preferences.slot_sizes[key] = math.max(1, actual)
       end
       runtime.applied_slots[key] = actual
       captured = true
     end
   end
   return captured, true
+end
+
+--- Configure whether tracked sizes are isolated by tabpage.
+---@public
+---@param tabpage_scoped boolean
+function Size:setup(tabpage_scoped)
+  if self.tabpage_scoped == tabpage_scoped then return end
+  self:clear()
+  self.tabpage_scoped = tabpage_scoped
 end
 
 --- Clear all preferences and tab-local runtime state.
@@ -226,23 +255,24 @@ function Size:clear()
   self.runtime = {}
 end
 
---- Explicitly set the shared tracked size for a side.
+--- Explicitly set the tracked size for a side in the configured scope.
 ---@package
 ---@param side Layout.Side
 ---@param size Layout.Size
 function Size:set(side, size)
   SharedSize.validate(size)
-  self.sizes[side] = size
+  preferences_for_current_tab().sizes[side] = size
 end
 
---- Return the shared tracked preference or configured fallback.
+--- Return the tracked preference or configured fallback for the current scope.
 ---@public
 ---@param side Layout.Side
 ---@param fallback Layout.Size
 ---@return Layout.Size
 function Size:get(side, fallback)
-  self.configured[side] = fallback
-  return self.sizes[side] or fallback
+  local preferences = preferences_for_current_tab()
+  preferences.configured[side] = fallback
+  return preferences.sizes[side] or fallback
 end
 
 --- Return a tracked view size or its configured fallback.
@@ -251,8 +281,9 @@ end
 ---@param fallback? Layout.Size
 ---@return Layout.Size?
 function Size:get_slot(key, fallback)
-  self.configured_slots[key] = fallback
-  return self.slot_sizes[key] or fallback
+  local preferences = preferences_for_current_tab()
+  preferences.configured_slots[key] = fallback
+  return preferences.slot_sizes[key] or fallback
 end
 
 --- Initialize an unseen tabpage without treating its geometry as a resize.

@@ -98,6 +98,7 @@
 ---@field left? Layout.Side.Config Left panel configuration.
 ---@field right? Layout.Side.Config Right panel configuration.
 ---@field bottom? Layout.Side.Config Bottom panel configuration.
+---@field tabpage_scoped_sizes? boolean Keep user-resized panel and view sizes independently for each tabpage.
 ---@field live_resize_debounce? integer Quiet period in ms before automatic placement resumes after panel/editor resizing.
 ---@field workspaces? Layout.Workspaces
 ---@field statusline? Layout.Statusline.Opts Statusline rendering options for group icons.
@@ -151,6 +152,7 @@ local defaults = {
   right = { size = 40 },
   bottom = { size = 15, align = 'full' },
   events = { 'FileType', 'WinEnter', 'BufWinEnter' },
+  tabpage_scoped_sizes = true,
   live_resize_debounce = 250,
   workspaces = {
     auto_save = true,
@@ -207,6 +209,7 @@ local VALID_PICK_POSES = { left = true, right = true, left_separator = true, rig
 ---@return Layout.Config
 function Config.merge(opts)
   local merged = vim.tbl_deep_extend('force', defaults, opts or {})
+  if type(merged.tabpage_scoped_sizes) ~= 'boolean' then error('tabpage_scoped_sizes must be a boolean') end
   if type(merged.events) ~= 'table' then error('events must be a list of autocommand event names') end
   local events = {}
   local seen_events = {}

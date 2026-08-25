@@ -421,7 +421,7 @@ describe('panel resizing', function()
       expect.equality(child.api.nvim_win_get_width(winL), 35)
     end)
 
-    it('shares preferences without comparing applied geometry across tabpages', function()
+    it('keeps panel preferences isolated between tabpages by default', function()
       -- Given: tab A has a manually resized left panel at width 40
       local cfg = U.test_config({
         left = {
@@ -443,19 +443,84 @@ describe('panel resizing', function()
       child.api.nvim_win_set_width(winA, 40)
       child.lua([[vim.api.nvim_exec_autocmds('WinResized', {}); vim.wait(20)]])
 
-      -- When: tab B opens the same panel and changes the shared preference
+      -- When: tab B opens the same panel and chooses a different width
       child.cmd('tabnew')
       local winB = U.make_tool_win(child, 'toolL')
       child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
-      expect.equality(child.api.nvim_win_get_width(winB), 40)
+      expect.equality(child.api.nvim_win_get_width(winB), 30)
       child.api.nvim_win_set_width(winB, 35)
       child.lua([[vim.api.nvim_exec_autocmds('WinResized', {}); vim.wait(20)]])
 
-      -- Then: returning to tab A applies width 35 without adopting tab A's
-      -- previously committed width 40 as a new preference
+      -- Then: returning to tab A restores that tab's own preference
       child.cmd('tabprevious')
       child.lua([[vim.wait(30)]])
-      expect.equality(child.api.nvim_win_get_width(winA), 35)
+      expect.equality(child.api.nvim_win_get_width(winA), 40)
+    end)
+
+    it('shares panel preferences between tabpages when tabpage scoping is disabled', function()
+      -- Given: global size sharing is enabled and tab A has a left panel resized to 40
+      local cfg = U.test_config({
+        left = {
+          size = 30,
+          groups = {
+            explorer = {
+              views = {
+                filesystem = { filter = 'toolL', open = 'echo left' },
+              },
+            },
+          },
+        },
+      })
+      cfg.tabpage_scoped_sizes = false
+      U.setup_config(child, cfg)
+      local winA = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+      child.api.nvim_win_set_width(winA, 40)
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+
+      -- When: tab B opens the same panel
+      child.cmd('tabnew')
+      local winB = U.make_tool_win(child, 'toolL')
+      child.lua([[require("layout.entities.panel"):arrange(_G._reg)]])
+
+      -- Then: tab B uses the globally remembered width
+      expect.equality(child.api.nvim_win_get_width(winB), 40)
+    end)
+
+    it('keeps stacked view sizes isolated between tabpages by default', function()
+      -- Given: tab A has two stacked views and the first is resized
+      U.setup_config(
+        child,
+        U.test_config({
+          left = {
+            size = 30,
+            groups = {
+              explorer = {
+                views = {
+                  first = { filter = 'toolA', open = 'echo first', size = 10 },
+                  second = { filter = 'toolB', open = 'echo second', size = 30 },
+                },
+              },
+            },
+          },
+        })
+      )
+      local firstA = U.make_tool_win(child, 'toolA')
+      child.cmd('belowright split')
+      U.make_tool_win(child, 'toolB')
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+      child.api.nvim_win_set_height(firstA, 8)
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+
+      -- When: the same views are opened in tab B
+      child.cmd('tabnew')
+      local firstB = U.make_tool_win(child, 'toolA')
+      child.cmd('belowright split')
+      U.make_tool_win(child, 'toolB')
+      child.lua([[require('layout.entities.panel'):arrange(_G._reg)]])
+
+      -- Then: tab B uses its configured view height, not tab A's preference
+      expect.equality(child.api.nvim_win_get_height(firstB), 10)
     end)
   end)
 

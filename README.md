@@ -65,6 +65,7 @@ require('layout').setup({
     groups = {},
   },
   events = { 'FileType', 'WinEnter', 'BufWinEnter' },
+  tabpage_scoped_sizes = true, -- remember panel and view sizes independently per tabpage
   live_resize_debounce = 250,
   workspaces = {
     auto_save = true,
