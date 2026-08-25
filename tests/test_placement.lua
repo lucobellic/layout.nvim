@@ -470,6 +470,92 @@ describe('placement.place', function()
         bottom = { size = 15, align = 'full', slots = { { winid = wins.toolB } } },
       })
     end)
+
+    it('preserves a split center when a second left-aligned bottom view opens', function()
+      -- Given: left, right, and bottom panels around two horizontally split
+      -- editor windows
+      local wins = U.make_scattered(child, { 'editor', 'toolL', 'toolR', 'terminal' })
+      local spec = {
+        left = { size = 30, slots = { { winid = wins.toolL } } },
+        right = { size = 30, slots = { { winid = wins.toolR } } },
+        bottom = { size = 15, align = 'left_aligned', slots = { { winid = wins.terminal } } },
+      }
+      place(spec)
+      child.api.nvim_set_current_win(wins.editor)
+      child.cmd('belowright split')
+      local second_editor = child.api.nvim_get_current_win()
+
+      -- When: Trouble opens another bottom window and placement restacks the
+      -- bottom panel
+      child.cmd('botright split')
+      local trouble = child.api.nvim_get_current_win()
+      spec.bottom.slots[2] = { winid = trouble }
+      place(spec)
+
+      -- Then: both editor windows remain in the center top region
+      expect.equality(norm_tree(), {
+        'row',
+        {
+          {
+            'col',
+            {
+              { 'row', { { 'leaf' }, { 'col', { { 'leaf' }, { 'leaf' } } } } },
+              { 'row', { { 'leaf' }, { 'leaf' } } },
+            },
+          },
+          { 'leaf' },
+        },
+      })
+      expect.equality(child.api.nvim_win_is_valid(wins.editor), true)
+      expect.equality(child.api.nvim_win_is_valid(second_editor), true)
+      expect.equality(child.api.nvim_win_get_position(wins.editor)[2], 31)
+      expect.equality(child.api.nvim_win_get_position(second_editor)[2], 31)
+      expect.equality(child.api.nvim_win_get_height(wins.editor) > 1, true)
+      expect.equality(child.api.nvim_win_get_height(second_editor) > 1, true)
+    end)
+
+    it('preserves a split center when a second right-aligned bottom view opens', function()
+      -- Given: left, right, and bottom panels around two horizontally split
+      -- editor windows
+      local wins = U.make_scattered(child, { 'editor', 'toolL', 'toolR', 'terminal' })
+      local spec = {
+        left = { size = 30, slots = { { winid = wins.toolL } } },
+        right = { size = 30, slots = { { winid = wins.toolR } } },
+        bottom = { size = 15, align = 'right_aligned', slots = { { winid = wins.terminal } } },
+      }
+      place(spec)
+      child.api.nvim_set_current_win(wins.editor)
+      child.cmd('belowright split')
+      local second_editor = child.api.nvim_get_current_win()
+
+      -- When: Trouble opens another bottom window and placement restacks the
+      -- bottom panel
+      child.cmd('botright split')
+      local trouble = child.api.nvim_get_current_win()
+      spec.bottom.slots[2] = { winid = trouble }
+      place(spec)
+
+      -- Then: both editor windows remain in the center top region
+      expect.equality(norm_tree(), {
+        'row',
+        {
+          { 'leaf' },
+          {
+            'col',
+            {
+              { 'row', { { 'col', { { 'leaf' }, { 'leaf' } } }, { 'leaf' } } },
+              { 'row', { { 'leaf' }, { 'leaf' } } },
+            },
+          },
+        },
+      })
+      expect.equality(child.api.nvim_win_is_valid(wins.editor), true)
+      expect.equality(child.api.nvim_win_is_valid(second_editor), true)
+      expect.equality(child.api.nvim_win_get_position(wins.editor)[2], 31)
+      expect.equality(child.api.nvim_win_get_position(second_editor)[2], 31)
+      expect.equality(child.api.nvim_win_get_height(wins.editor) > 1, true)
+      expect.equality(child.api.nvim_win_get_height(second_editor) > 1, true)
+    end)
   end)
 
   describe('corrective relocation', function()

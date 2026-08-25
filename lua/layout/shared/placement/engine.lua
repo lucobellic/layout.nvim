@@ -217,7 +217,8 @@ end
 ---@private
 ---@param spec Placement.Spec
 ---@param center integer
-local function correct_shape(spec, center)
+---@param windows Placement.WindowMap
+local function correct_shape(spec, center, windows)
   local left = Spec.region_slots(spec.left)
   local right = Spec.region_slots(spec.right)
   local bottom = Spec.region_slots(spec.bottom)
@@ -230,10 +231,18 @@ local function correct_shape(spec, center)
   elseif align == 'left_aligned' then
     if bottom[1] then move_to_edge(bottom[1].winid, 'J') end
     if right[1] then move_to_edge(right[1].winid, 'L') end
+    stack_region(spec.left, false)
+    stack_region(spec.right, false)
+    stack_region(spec.bottom, true)
+    if shape_is_correct(spec, windows) then return end
     if left[1] then splitmove(left[1].winid, center, true, false) end
   elseif align == 'right_aligned' then
     if bottom[1] then move_to_edge(bottom[1].winid, 'J') end
     if left[1] then move_to_edge(left[1].winid, 'H') end
+    stack_region(spec.left, false)
+    stack_region(spec.right, false)
+    stack_region(spec.bottom, true)
+    if shape_is_correct(spec, windows) then return end
     if right[1] then splitmove(right[1].winid, center, true, true) end
   elseif align == 'full' then
     if left[1] then move_to_edge(left[1].winid, 'H') end
@@ -434,7 +443,7 @@ function Engine.place(spec)
   local editor_width, editor_height = Size.editor_dimensions()
 
   with_deterministic_options(function()
-    if not shape_is_correct(spec, windows) then correct_shape(spec, center) end
+    if not shape_is_correct(spec, windows) then correct_shape(spec, center, windows) end
     apply_sizes(spec, editor_width, editor_height)
     tag_windows(windows)
   end, windows)
