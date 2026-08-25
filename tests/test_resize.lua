@@ -232,6 +232,50 @@ describe('panel resizing', function()
   -- resize and placement coordination
   --------------------------------------------------------------------------------
   describe('resize and placement coordination', function()
+    it('backs off automatic placement when there is not enough room', function()
+      -- Given: automatic placement cannot move a split because the editor is
+      -- too small
+      local cfg = U.test_config({})
+      cfg.live_resize_debounce = 10
+      U.setup_config(child, cfg)
+      child.lua([[
+        require("layout.autocmds"):setup(_G._reg, _G._c)
+        local Panel = require("layout.entities.panel")
+        _G._automatic_arranges = 0
+        _G._arrange_warnings = {}
+        vim.notify = function(message, level)
+          table.insert(_G._arrange_warnings, { message = message, level = level })
+        end
+        Panel.arrange = function()
+          _G._automatic_arranges = _G._automatic_arranges + 1
+          if _G._automatic_arranges == 1 then error("Vim:E36: Not enough room") end
+        end
+      ]])
+
+      -- When: ordinary layout events continue after the failed attempt
+      child.lua([[
+        vim.api.nvim_exec_autocmds("FileType", { buffer = 0 })
+        vim.wait(80)
+        vim.api.nvim_exec_autocmds("FileType", { buffer = 0 })
+        vim.wait(80)
+      ]])
+
+      -- Then: placement is blocked and the user is warned only once
+      expect.equality(child.lua_get([[_G._automatic_arranges]]), 1)
+      expect.equality(child.lua_get([[#_G._arrange_warnings]]), 1)
+      expect.equality(
+        child.lua_get([[_G._arrange_warnings[1].message]]),
+        'layout.nvim: not enough room to arrange panels; will retry after resize or window close'
+      )
+      expect.equality(child.lua_get([[_G._arrange_warnings[1].level]]), vim.log.levels.WARN)
+
+      -- When: an editor resize can provide enough room
+      child.lua([[vim.api.nvim_exec_autocmds("VimResized", {}); vim.wait(40)]])
+
+      -- Then: automatic placement is attempted again
+      expect.equality(child.lua_get([[_G._automatic_arranges]]), 2)
+    end)
+
     it('defers automatic arrangement until a manual resize stream is quiet', function()
       -- Given: an arranged panel with automatic events enabled
       local cfg = U.test_config({

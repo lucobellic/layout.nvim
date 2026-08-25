@@ -18,6 +18,7 @@ local View = require('layout.entities.view')
 ---@field resize_active boolean
 ---@field pending_arrange boolean
 ---@field pending_save boolean
+---@field insufficient_room boolean
 
 ---@class Layout.Autocmds
 ---@field private registry Layout.Registry?
@@ -50,6 +51,7 @@ local function session_for(tabpage)
       resize_active = false,
       pending_arrange = false,
       pending_save = false,
+      insufficient_room = false,
     }
   end
   return Autocmds.sessions[id]
@@ -74,6 +76,12 @@ local function resized_windows()
   return event.windows
 end
 
+---@param err any
+---@return boolean
+local function is_not_enough_room(err)
+  return tostring(err):find('E36: Not enough room', 1, true) ~= nil
+end
+
 --- Run one pending arrangement if its tabpage is current and not resizing.
 ---@param tabpage integer
 local function run_pending_arrange(tabpage)
@@ -86,6 +94,14 @@ local function run_pending_arrange(tabpage)
   session.pending_arrange = false
   local ok, err = pcall(Panel.arrange, Panel, Autocmds.registry)
   if not ok then
+    if is_not_enough_room(err) then
+      session.insufficient_room = true
+      vim.notify(
+        'layout.nvim: not enough room to arrange panels; will retry after resize or window close',
+        vim.log.levels.WARN
+      )
+      return
+    end
     session.pending_arrange = true
     error(err)
   end
@@ -119,6 +135,7 @@ function Autocmds:schedule_arrange(delay, synchronous)
   if not self.registry then return end
   local tabpage = tab_id()
   local session = session_for(tabpage)
+  if session.insufficient_room then return end
   session.pending_arrange = true
   session.arrange_generation = session.arrange_generation + 1
   stop_timer(session.arrange_timer)
@@ -230,7 +247,9 @@ function Autocmds:wire()
   vim.api.nvim_create_autocmd('WinClosed', {
     group = self.augroup,
     callback = function()
-      session_for().pending_save = true
+      local session = session_for()
+      session.pending_save = true
+      session.insufficient_room = false
       Size:mark_topology_changed()
       self:schedule_arrange(0)
     end,
@@ -271,6 +290,7 @@ function Autocmds:wire()
   vim.api.nvim_create_autocmd('VimResized', {
     group = self.augroup,
     callback = function()
+      session_for().insufficient_room = false
       Size:mark_editor_resized()
       self:schedule_arrange(resize_delay())
     end,
