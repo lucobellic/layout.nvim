@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/lucobellic/layout.nvim/compare/v0.1.0...v0.2.0) (2026-08-25)
+
+
+### Features
+
+* scope remembered sizes by tabpage ([a9cbc23](https://github.com/lucobellic/layout.nvim/commit/a9cbc232386bb92a30178f39571b6ebee73d5d04))
+
 ## 0.1.0 (2026-08-25)
 
 
