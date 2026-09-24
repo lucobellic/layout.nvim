@@ -143,6 +143,35 @@ describe('features.toggle', function()
     expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('left', 'broken')]]), false)
   end)
 
+  it('does not report an invalid window error from an open command', function()
+    -- Given: an opener fails while another plugin handles a stale window
+    local cfg = U.test_config({
+      right = {
+        groups = {
+          opencode = {
+            views = {
+              opencode = {
+                filter = 'opencode',
+                open = function()
+                  error('BufWinEnter Autocommands: Invalid window id: 1000')
+                end,
+              },
+            },
+          },
+        },
+      },
+    })
+    U.setup_config(child, cfg)
+    child.lua([[vim.notify = function(message) _G._open_error = message end]])
+
+    -- When: the group is opened
+    child.lua([[require('layout.features.toggle').open_group('right', 'opencode')]])
+
+    -- Then: layout does not report the failure or mark the group open
+    expect.equality(child.lua_get([[_G._open_error]]), vim.NIL)
+    expect.equality(child.lua_get([[require('layout.entities.workspace'):is_open('right', 'opencode')]]), false)
+  end)
+
   it('keeps the editor cursor on the same screen row when opening multiple full-width bottom views', function()
     -- Given: splitkeep=screen and an editor cursor that remains visible while
     -- two bottom windows are opened one after another.
