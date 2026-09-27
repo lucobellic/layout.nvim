@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/lucobellic/layout.nvim/compare/v0.1.0...v0.2.0) (2026-09-27)
+
+
+### Features
+
+* scope remembered sizes by tabpage ([a9cbc23](https://github.com/lucobellic/layout.nvim/commit/a9cbc232386bb92a30178f39571b6ebee73d5d04))
+
+
+### Bug Fixes
+
+* avoid transient E36 during placement ([b9b4d06](https://github.com/lucobellic/layout.nvim/commit/b9b4d069faaa0ea7654274a309353126a443ab0e))
+* suppress invalid window open notification ([37e449b](https://github.com/lucobellic/layout.nvim/commit/37e449b624b39204dc48d330178ec8041690b2ee))
+
 ## 0.1.0 (2026-08-25)
 
 
