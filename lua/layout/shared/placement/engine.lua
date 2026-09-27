@@ -14,6 +14,11 @@ local Engine = {}
 
 ---@alias Placement.WindowMap table<string, integer>
 
+---@class Placement.WindowFixState
+---@field win integer
+---@field width boolean
+---@field height boolean
+
 ---@private
 ---@param win integer?
 ---@return boolean
@@ -389,46 +394,65 @@ local function with_deterministic_options(fn, windows)
     vim.api.nvim_set_option_value(name, value, {})
   end)
 
-  local ok, err = xpcall(fn, debug.traceback)
-  if not ok then
-    vim.iter(pairs(saved)):each(function(name, value)
-      pcall(vim.api.nvim_set_option_value, name, value, {})
-    end)
-    error(err)
-  end
-
-  -- Protect center windows so equalization triggered by restoring 'equalalways'
-  -- leaves them untouched.  All windows that are not panel windows (L/R/B)
-  -- have winfixwidth and winfixheight set to 'true' before the global option
-  -- restoration, then their originals are restored after.
-  local panel_wins, center_fix = {}, {}
+  ---@type table<integer, boolean>
+  local panel_windows = {}
   if windows then
     vim.iter(pairs(windows)):each(function(label, win)
-      if label ~= 'C' then panel_wins[win] = true end
+      if label ~= 'C' then panel_windows[win] = true end
     end)
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      if vim.api.nvim_win_is_valid(win) and not panel_wins[win] then
-        center_fix[#center_fix + 1] = {
-          win = win,
-          wfw = vim.api.nvim_get_option_value('winfixwidth', { win = win }),
-          wfh = vim.api.nvim_get_option_value('winfixheight', { win = win }),
-        }
-        vim.api.nvim_set_option_value('winfixwidth', true, { win = win })
-        vim.api.nvim_set_option_value('winfixheight', true, { win = win })
-      end
+  end
+
+  ---@type Placement.WindowFixState[]
+  local window_fix_states = {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if normal(win) then
+      window_fix_states[#window_fix_states + 1] = {
+        win = win,
+        width = vim.api.nvim_get_option_value('winfixwidth', { win = win }),
+        height = vim.api.nvim_get_option_value('winfixheight', { win = win }),
+      }
+      vim.api.nvim_set_option_value('winfixwidth', false, { win = win })
+      vim.api.nvim_set_option_value('winfixheight', false, { win = win })
     end
   end
 
-  -- Restore 'equalalways' (and others) while center windows are protected.
+  local ok, err = xpcall(fn, debug.traceback)
+  if not ok then
+    -- Protect current geometry while restoring global options.
+    for _, state in ipairs(window_fix_states) do
+      if valid(state.win) then
+        pcall(vim.api.nvim_set_option_value, 'winfixwidth', true, { win = state.win })
+        pcall(vim.api.nvim_set_option_value, 'winfixheight', true, { win = state.win })
+      end
+    end
+    vim.iter(pairs(saved)):each(function(name, value)
+      pcall(vim.api.nvim_set_option_value, name, value, {})
+    end)
+    for _, state in ipairs(window_fix_states) do
+      if valid(state.win) then
+        pcall(vim.api.nvim_set_option_value, 'winfixwidth', state.width, { win = state.win })
+        pcall(vim.api.nvim_set_option_value, 'winfixheight', state.height, { win = state.win })
+      end
+    end
+    error(err)
+  end
+
+  -- Protect center windows from equalization during global option restoration.
+  for _, state in ipairs(window_fix_states) do
+    if valid(state.win) and not panel_windows[state.win] then
+      vim.api.nvim_set_option_value('winfixwidth', true, { win = state.win })
+      vim.api.nvim_set_option_value('winfixheight', true, { win = state.win })
+    end
+  end
+
   vim.iter(pairs(saved)):each(function(name, value)
     pcall(vim.api.nvim_set_option_value, name, value, {})
   end)
 
-  -- Restore center windows' original winfix values.
-  for _, c in ipairs(center_fix) do
-    if vim.api.nvim_win_is_valid(c.win) then
-      pcall(vim.api.nvim_set_option_value, 'winfixwidth', c.wfw, { win = c.win })
-      pcall(vim.api.nvim_set_option_value, 'winfixheight', c.wfh, { win = c.win })
+  for _, state in ipairs(window_fix_states) do
+    if valid(state.win) and not panel_windows[state.win] then
+      pcall(vim.api.nvim_set_option_value, 'winfixwidth', state.width, { win = state.win })
+      pcall(vim.api.nvim_set_option_value, 'winfixheight', state.height, { win = state.win })
     end
   end
 end

@@ -34,6 +34,13 @@ local function run_open(view)
   return false, 'open must be a string or function', true
 end
 
+---@private
+---@param open_error any
+---@return boolean
+local function is_invalid_window_error(open_error)
+  return tostring(open_error):find('Invalid window id:', 1, true) ~= nil
+end
+
 --- Collect the non-floating windows created by `fn` by diffing the
 --- tabpage window list around the call.
 ---@private
@@ -135,6 +142,7 @@ function Toggle.open_group(side, group_name, selected)
       opened, open_error, attempted = run_open(v.view)
     end)
     if not opened then
+      if is_invalid_window_error(open_error) then return end
       vim.notify(
         ('[layout.nvim] Failed to open %s.%s.%s: %s'):format(side, group_name, v.name, tostring(open_error)),
         vim.log.levels.ERROR

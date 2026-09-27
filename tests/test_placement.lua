@@ -224,6 +224,50 @@ describe('placement.place', function()
   -- multi-window stacking
   --------------------------------------------------------------------------------
   describe('multi-window stacking', function()
+    it('adds a view to a fixed panel without reporting not enough room', function()
+      -- Given: two fixed views already fill the left panel
+      local wins = U.make_scattered(child, { 'editor', 'first', 'second' })
+      place({
+        left = {
+          size = 30,
+          slots = { { winid = wins.first }, { winid = wins.second } },
+        },
+      })
+
+      -- And: a third view opens outside that panel
+      child.api.nvim_set_current_win(wins.editor)
+      child.cmd('belowright split')
+      local third = child.api.nvim_get_current_win()
+      child.api.nvim_win_set_buf(third, U.named_buf(child, 'third'))
+
+      child.lua([[
+        local original_splitmove = vim.fn.win_splitmove
+        vim.fn.win_splitmove = function(...)
+          for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+            local fixed_width = vim.api.nvim_get_option_value('winfixwidth', { win = winid })
+            local fixed_height = vim.api.nvim_get_option_value('winfixheight', { win = winid })
+            if fixed_width or fixed_height then error('Vim:E36: Not enough room') end
+          end
+          return original_splitmove(...)
+        end
+      ]])
+
+      -- When: the third view is added to the existing panel
+      place({
+        left = {
+          size = 30,
+          slots = { { winid = wins.first }, { winid = wins.second }, { winid = third } },
+        },
+      })
+
+      -- Then: all views are stacked and placement completes without E36
+      expect.equality(norm_tree(), {
+        'row',
+        { { 'col', { { 'leaf' }, { 'leaf' }, { 'leaf' } } }, { 'leaf' } },
+      })
+      expect.equality(child.api.nvim_get_option_value('winfixheight', { win = third }), true)
+    end)
+
     it('stacks two views vertically in the left panel', function()
       -- Given: editor + two tools
       local wins, bufs = U.make_scattered(child, { 'editor', 't1', 't2' })
