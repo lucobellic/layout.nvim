@@ -17,7 +17,7 @@ layout.nvimIDE style panel management for Neovim
 
 An opinionated panel manager for Neovim that brings standard IDE style window
 arrangements with reserved left, right, and bottom panels, and declarative view configuration.
-  [!IMPORTANT] This plugin is vibe coded with GPT-5.6 Sol.
+  [!IMPORTANT] This plugin is vibe coded.
 
 INSTALLATION                                             *layout-installation*
 
