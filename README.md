@@ -21,7 +21,7 @@
 </p>
 
 > [!IMPORTANT]
-> This plugin is vibe coded with GPT-5.6 Sol.
+> This plugin is vibe coded.
 
 ## Installation
 
