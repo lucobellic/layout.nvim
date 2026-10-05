@@ -4,6 +4,7 @@
 --- `toggle_group(side, group_name)`: if open → close; if closed → open.
 --- `open_panel(side)` / `close_panel(side)`: operate on all groups on a side.
 
+local Errors = require('layout.shared.errors')
 local Group = require('layout.entities.group')
 local Panel = require('layout.entities.panel')
 local View = require('layout.entities.view')
@@ -142,7 +143,7 @@ function Toggle.open_group(side, group_name, selected)
       opened, open_error, attempted = run_open(v.view)
     end)
     if not opened then
-      if is_invalid_window_error(open_error) then return end
+      if is_invalid_window_error(open_error) or Errors.is_not_enough_room(open_error) then return end
       vim.notify(
         ('[layout.nvim] Failed to open %s.%s.%s: %s'):format(side, group_name, v.name, tostring(open_error)),
         vim.log.levels.ERROR

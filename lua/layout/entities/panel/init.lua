@@ -37,6 +37,7 @@
 ---@field without_key Layout.Entity.Panel.RawSlot[]
 
 local Constants = require('layout.shared.constants')
+local Errors = require('layout.shared.errors')
 local placement = require('layout.shared.placement')
 local size_model = require('layout.entities.panel.model.size')
 local view_entity = require('layout.entities.view')
@@ -313,6 +314,7 @@ end
 ---@public
 ---@param registry? Layout.Registry
 ---@param presumed? Layout.Entity.Panel.Presumed
+---@return boolean? completed False when Neovim has insufficient room, nil when skipped.
 function Panel:arrange(registry, presumed)
   registry = registry or self.registry
   if vim.fn.getcmdwintype() ~= '' or vim.v.exiting ~= vim.NIL then
@@ -328,6 +330,8 @@ function Panel:arrange(registry, presumed)
   if not ok then
     size_model:abort_placement()
     view_state:restore(saved_views)
+    -- Leave failed geometry retryable without reporting a transient space limit.
+    if Errors.is_not_enough_room(placed) then return false end
     error(placed)
   end
 
@@ -337,6 +341,7 @@ function Panel:arrange(registry, presumed)
     size_model:settle_topology()
   end
   view_state:restore(saved_views)
+  return true
 end
 
 return Panel

@@ -4,6 +4,7 @@
 --- deferred until the resize stream has been quiet for the configured delay,
 --- preventing placement from restoring stale geometry while the user drags.
 
+local Errors = require('layout.shared.errors')
 local Panel = require('layout.entities.panel')
 local Restore = require('layout.features.restore')
 local Save = require('layout.features.save')
@@ -76,12 +77,6 @@ local function resized_windows()
   return event.windows
 end
 
----@param err any
----@return boolean
-local function is_not_enough_room(err)
-  return tostring(err):find('E36: Not enough room', 1, true) ~= nil
-end
-
 --- Run one pending arrangement if its tabpage is current and not resizing.
 ---@param tabpage integer
 local function run_pending_arrange(tabpage)
@@ -92,18 +87,14 @@ local function run_pending_arrange(tabpage)
   stop_timer(session.arrange_timer)
   session.arrange_timer = nil
   session.pending_arrange = false
-  local ok, err = pcall(Panel.arrange, Panel, Autocmds.registry)
+  local ok, result = pcall(Panel.arrange, Panel, Autocmds.registry)
+  if (ok and result == false) or (not ok and Errors.is_not_enough_room(result)) then
+    session.insufficient_room = true
+    return
+  end
   if not ok then
-    if is_not_enough_room(err) then
-      session.insufficient_room = true
-      vim.notify(
-        'layout.nvim: not enough room to arrange panels; will retry after resize or window close',
-        vim.log.levels.WARN
-      )
-      return
-    end
     session.pending_arrange = true
-    error(err)
+    error(result)
   end
   if
     session.pending_save

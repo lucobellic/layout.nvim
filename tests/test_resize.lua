@@ -232,7 +232,7 @@ describe('panel resizing', function()
   -- resize and placement coordination
   --------------------------------------------------------------------------------
   describe('resize and placement coordination', function()
-    it('backs off automatic placement when there is not enough room', function()
+    it('silently backs off automatic placement when there is not enough room', function()
       -- Given: automatic placement cannot move a split because the editor is
       -- too small
       local cfg = U.test_config({})
@@ -246,9 +246,10 @@ describe('panel resizing', function()
         vim.notify = function(message, level)
           table.insert(_G._arrange_warnings, { message = message, level = level })
         end
+        ---@return boolean?
         Panel.arrange = function()
           _G._automatic_arranges = _G._automatic_arranges + 1
-          if _G._automatic_arranges == 1 then error("Vim:E36: Not enough room") end
+          if _G._automatic_arranges == 1 then return false end
         end
       ]])
 
@@ -260,14 +261,9 @@ describe('panel resizing', function()
         vim.wait(80)
       ]])
 
-      -- Then: placement is blocked and the user is warned only once
+      -- Then: placement is blocked without warning the user
       expect.equality(child.lua_get([[_G._automatic_arranges]]), 1)
-      expect.equality(child.lua_get([[#_G._arrange_warnings]]), 1)
-      expect.equality(
-        child.lua_get([[_G._arrange_warnings[1].message]]),
-        'layout.nvim: not enough room to arrange panels; will retry after resize or window close'
-      )
-      expect.equality(child.lua_get([[_G._arrange_warnings[1].level]]), vim.log.levels.WARN)
+      expect.equality(child.lua_get([[#_G._arrange_warnings]]), 0)
 
       -- When: an editor resize can provide enough room
       child.lua([[vim.api.nvim_exec_autocmds("VimResized", {}); vim.wait(40)]])
