@@ -63,12 +63,11 @@ function ViewState:initialize(tabpage)
   return session
 end
 
---- Return the last stable editor views, refreshing them only while the normal
---- window set is unchanged. A new split therefore freezes the pre-split view.
----@public
+--- Refresh tracked views only while the normal window set is unchanged.
+---@private
 ---@param tabpage? integer
 ---@return table<integer, Layout.Shared.ViewState.View>
-function ViewState:save(tabpage)
+function ViewState:refresh(tabpage)
   tabpage = tabpage or vim.api.nvim_get_current_tabpage()
   local session = self.sessions[tabpage]
   local windows = Windows.normal_set(tabpage)
@@ -78,7 +77,16 @@ function ViewState:save(tabpage)
     session.windows = windows
     session.views = capture_views(tabpage)
   end
-  return vim.deepcopy(session.views)
+  return session.views
+end
+
+--- Return a copy of the last stable editor views.
+--- A new split freezes the view captured before it was created.
+---@public
+---@param tabpage? integer
+---@return table<integer, Layout.Shared.ViewState.View>
+function ViewState:save(tabpage)
+  return vim.deepcopy(self:refresh(tabpage))
 end
 
 --- Restore a stable snapshot to surviving editor windows, then accept the new
@@ -140,7 +148,7 @@ function ViewState:setup()
   vim.api.nvim_create_autocmd('WinScrolled', {
     group = self.augroup,
     callback = function()
-      self:save()
+      self:refresh()
     end,
   })
 end
