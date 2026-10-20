@@ -28,14 +28,12 @@ function M.setup(opts)
   local registry = Config.normalize(resolved)
   PanelSize:setup(resolved.tabpage_scoped_sizes)
 
-  -- Allow windows to shrink to zero so user-initiated center splits and
-  -- closes do not push panel windows out of their declared size.  With the
-  -- default winminheight=1 / winminwidth=1, Neovim refuses to shrink the
-  -- center frame below one row/column and instead grows it, eating into
-  -- panel space (the bottom panel in particular) even though panel
-  -- windows carry winfixwidth/winfixheight.
-  vim.o.winminheight = 0
-  vim.o.winminwidth = 0
+  if resolved.set_window_options then
+    -- Allow zero height so center splits do not take space from bottom panels.
+    vim.o.winminheight = 0
+    -- Keep a positive minimum so shrinking the center can grow fixed width panels.
+    vim.o.winminwidth = 1
+  end
 
   View:register(registry)
   Group:register(registry)

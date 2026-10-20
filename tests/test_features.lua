@@ -27,7 +27,7 @@ describe('setup()', function()
     child.stop()
   end)
 
-  it('sets winminheight=0 and winminwidth=0 so user splits cannot push panel windows', function()
+  it('sets window minimums by default to support panel sizing', function()
     -- Given: Neovim defaults (child already started by before_each)
     expect.equality(child.o.winminheight, 1)
     expect.equality(child.o.winminwidth, 1)
@@ -35,9 +35,26 @@ describe('setup()', function()
     -- When: setup() is called with an empty config
     child.lua("require('layout').setup({})")
 
-    -- Then: global minimums are 0
+    -- Then: the height allows empty windows and the width stays positive
     expect.equality(child.o.winminheight, 0)
-    expect.equality(child.o.winminwidth, 0)
+    expect.equality(child.o.winminwidth, 1)
+  end)
+
+  it('preserves user window minimums when setting window options is disabled', function()
+    -- Given: the user has chosen custom window minimums
+    child.o.winheight = 2
+    child.o.winminheight = 2
+    child.o.winminwidth = 3
+
+    -- When: setup skips the global window options
+    child.lua([[require('layout').setup({
+      set_window_options = false,
+      workspaces = { auto_restore = false },
+    })]])
+
+    -- Then: both user values remain unchanged
+    expect.equality(child.o.winminheight, 2)
+    expect.equality(child.o.winminwidth, 3)
   end)
 
   it('can be called again to replace the active configuration', function()

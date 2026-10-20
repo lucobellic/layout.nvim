@@ -79,6 +79,22 @@ Each view may also define `size`, `bo`, and `wo`. View `size` controls its
 stacking dimension within the panel. `bo` and `wo` apply buffer-local and
 window-local options after placement.
 
+### Window Options
+
+By default, setup sets the global options `winminheight = 0` and
+`winminwidth = 1` to support panel sizing. These affect all tabs and windows,
+and allow inactive windows to collapse to zero text lines.
+
+To keep your own values, skip these setup overrides:
+
+```lua
+require('layout').setup({
+  set_window_options = false, -- defaults to true
+})
+```
+
+Layout operations still temporarily adjust these options and restore them afterward.
+
 ### Bottom Alignment
 
 `bottom.align` controls which columns the bottom panel spans. It defaults to
