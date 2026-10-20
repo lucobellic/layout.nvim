@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/lucobellic/layout.nvim/compare/v0.2.0...v0.3.0) (2026-10-20)
+
+
+### Features
+
+* make global window options configurable ([10db8f8](https://github.com/lucobellic/layout.nvim/commit/10db8f831255795570f00adac4730a6872d519fe))
+
+
+### Bug Fixes
+
+* suppress transient E36 errors ([3647c9a](https://github.com/lucobellic/layout.nvim/commit/3647c9a53ff19cc80ff7e78f586b5570541f92ef))
+
+
+### Performance Improvements
+
+* avoid copying view snapshots on scroll ([daa6fa9](https://github.com/lucobellic/layout.nvim/commit/daa6fa99ccb93b53e11fda753281c5c8cff71d63))
+
 ## [0.2.0](https://github.com/lucobellic/layout.nvim/compare/v0.1.0...v0.2.0) (2026-09-27)
 
 
