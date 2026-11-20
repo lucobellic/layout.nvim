@@ -358,6 +358,57 @@ describe('features.toggle', function()
     expect.equality(is_shown(), false)
   end)
 
+  describe('detaching a buffer', function()
+    local tool_win
+
+    before_each(function()
+      -- Given: an editor with a left panel and a full width bottom panel
+      U.prepare(child)
+      U.setup_config(
+        child,
+        U.test_config({
+          left = { size = 30, groups = { explorer = { views = { tree = { filter = 'toolL', open = 'echo' } } } } },
+          bottom = {
+            size = 10,
+            align = 'full',
+            groups = { term = { views = { shell = { filter = 'toolB', open = 'echo' } } } },
+          },
+        })
+      )
+      child.cmd('vsplit')
+      U.make_tool_win(child, 'toolL')
+      child.cmd('wincmd l')
+      child.cmd('split')
+      tool_win = U.make_tool_win(child, 'toolB')
+      child.lua([[require('layout.entities.panel'):arrange()]])
+    end)
+
+    local function detach()
+      child.lua(([[require('layout').set_buffer_enabled(vim.api.nvim_win_get_buf(%d), false)]]):format(tool_win))
+    end
+
+    it('moves the window out of its panel right away', function()
+      -- When: the bottom panel buffer is detached
+      detach()
+
+      -- Then: the window now sits in the editor area beside the left panel
+      local layout = child.fn.winlayout()
+      expect.equality(layout[1], 'row')
+      expect.equality(layout[2][2][1], 'col')
+      expect.equality(layout[2][2][2][2], { 'leaf', tool_win })
+    end)
+
+    it('releases the fixed panel size so equalizing includes the window', function()
+      -- When: the bottom panel buffer is detached and windows are equalized
+      detach()
+      child.cmd('wincmd =')
+
+      -- Then: the window no longer keeps its panel height
+      expect.equality(child.api.nvim_get_option_value('winfixheight', { win = tool_win }), false)
+      expect.no_equality(child.api.nvim_win_get_height(tool_win), 10)
+    end)
+  end)
+
   it('toggle_group opens when closed, closes when open', function()
     local cfg = U.test_config({
       left = {

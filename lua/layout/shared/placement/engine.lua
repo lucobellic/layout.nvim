@@ -369,12 +369,23 @@ local function apply_sizes(spec, editor_width, editor_height)
   end
 end
 
+--- Whether the window held a panel slot after the previous placement.
+---@private
+---@param win integer
+---@return boolean
+local function was_managed(win)
+  local ok, managed = pcall(vim.api.nvim_win_get_var, win, 'layout_managed')
+  return ok and managed == true
+end
+
 --- Run fn with deterministic window options, then restore them.
 ---
 --- Center (non-panel) windows are temporarily given winfixwidth and
 --- winfixheight before equalalways is restored so Neovim's
 --- win_equalizeall (triggered by setting equalalways back to true)
 --- cannot resize them.  Their original winfix values are then restored.
+--- Windows leaving a panel drop the fixed size the panel gave them, so
+--- they resize like any other editor window.
 ---@private
 ---@param fn fun()
 ---@param windows? Placement.WindowMap  window map for identifying panel windows
@@ -406,10 +417,11 @@ local function with_deterministic_options(fn, windows)
   local window_fix_states = {}
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     if normal(win) then
+      local released = was_managed(win) and not panel_windows[win]
       window_fix_states[#window_fix_states + 1] = {
         win = win,
-        width = vim.api.nvim_get_option_value('winfixwidth', { win = win }),
-        height = vim.api.nvim_get_option_value('winfixheight', { win = win }),
+        width = not released and vim.api.nvim_get_option_value('winfixwidth', { win = win }),
+        height = not released and vim.api.nvim_get_option_value('winfixheight', { win = win }),
       }
       vim.api.nvim_set_option_value('winfixwidth', false, { win = win })
       vim.api.nvim_set_option_value('winfixheight', false, { win = win })

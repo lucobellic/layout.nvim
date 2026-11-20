@@ -71,8 +71,8 @@ function M.toggle_rail()
 end
 
 --- Enable or disable layout management for an already-managed buffer.
---- Disabling takes effect immediately for panel operations.
---- Re-enabling also arranges the buffer into its recorded panel.
+--- Both directions take effect immediately: disabling moves the window out
+--- of its panel and re-enabling arranges it back into its recorded panel.
 ---@public
 ---@param bufnr integer
 ---@param enabled boolean
@@ -83,7 +83,7 @@ function M.set_buffer_enabled(bufnr, enabled)
 
   info.enabled = enabled
   vim.b[bufnr].layout = info
-  if enabled then require('layout.entities.panel'):arrange() end
+  require('layout.entities.panel'):arrange()
   return true
 end
 
